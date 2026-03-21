@@ -3,7 +3,6 @@
 **NautilusTrader adapter for MetaTrader 5**  live trading and backtesting on any MT5 broker (Exness, IC Markets, Pepperstone, and more).
 
 [![PyPI version](https://badge.fury.io/py/nautilus-mt5.svg)](https://badge.fury.io/py/nautilus-mt5)
-[![Tests](https://github.com/YOUR_USERNAME/nautilus-mt5/actions/workflows/test.yml/badge.svg)](https://github.com/YOUR_USERNAME/nautilus-mt5/actions/workflows/test.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](https://www.microsoft.com/windows)
