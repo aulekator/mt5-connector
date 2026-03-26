@@ -1,11 +1,14 @@
 # mt5connect
 
-**NautilusTrader adapter for MetaTrader 5**  live trading and backtesting on any MT5 broker (Exness, IC Markets, Pepperstone, and more).
+**Unofficial community MetaTrader 5 adapter for NautilusTrader** — live trading and backtesting on any MT5 broker (Exness, IC Markets, Pepperstone, and more).
+
+> ⚠️ **Disclaimer:** This is an independent community project. It is **not** affiliated with, endorsed by, or supported by [Nautech Systems Pty Ltd](https://nautilustrader.io) or the official [NautilusTrader](https://nautilustrader.io) project.
 
 [![PyPI version](https://badge.fury.io/py/mt5connect.svg)](https://badge.fury.io/py/mt5connect)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](https://www.microsoft.com/windows)
+[![Unofficial](https://img.shields.io/badge/NautilusTrader-unofficial%20community%20adapter-orange.svg)](https://nautilustrader.io)
 
 ---
 
@@ -626,3 +629,7 @@ New features should include tests. The test suite mocks the MT5 terminal so no l
 ## License
 
 MIT — see [LICENSE](LICENSE) for details.
+
+---
+
+*This project is not affiliated with, endorsed by, or supported by Nautech Systems Pty Ltd or the NautilusTrader project.*
