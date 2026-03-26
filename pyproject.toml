@@ -50,10 +50,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage   = "https://github.com/aulekator/mt5connect"
-Repository = "https://github.com/aulekator/mt5connect"
-Issues     = "https://github.com/aulekator/mt5connect/issues"
-Changelog  = "https://github.com/aulekator/mt5connect/blob/main/CHANGELOG.md"
+Homepage   = "https://github.com/aulekator/mt5-connect"
+Repository = "https://github.com/aulekator/mt5-connect"
+Issues     = "https://github.com/aulekator/mt5-connect/issues"
+Changelog  = "https://github.com/aulekator/mt5-connect/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["mt5connect"]

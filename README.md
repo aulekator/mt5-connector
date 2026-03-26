@@ -70,7 +70,7 @@ pip install mt5connect
 Or install from source for development:
 
 ```bash
-git clone https://github.com/aulekator/mt5connect
+git clone https://github.com/aulekator/mt5-connect
 cd mt5connect
 pip install -e ".[dev]"
 ```
