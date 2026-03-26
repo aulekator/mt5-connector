@@ -27,11 +27,11 @@ import MetaTrader5 as mt5
 from nautilus_trader.common.providers import InstrumentProvider
 from nautilus_trader.model.identifiers import InstrumentId, Symbol
 
-from nautilus_mt5.errors import MT5ConnectionError, MT5InstrumentError, MT5SymbolNotFoundError
-from nautilus_mt5.parsing import InstrumentAny, parse_symbol_info
+from mt5connect.errors import MT5ConnectionError, MT5InstrumentError, MT5SymbolNotFoundError
+from mt5connect.parsing import InstrumentAny, parse_symbol_info
 
 if TYPE_CHECKING:
-    from nautilus_mt5.connection import MT5Connection
+    from mt5connect.connection import MT5Connection
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +264,7 @@ class MT5InstrumentProvider(InstrumentProvider):
         symbol : str
             Symbol name (e.g. "EURUSD"). Case-insensitive.
         """
-        from nautilus_mt5.constants import MT5_VENUE
+        from mt5connect.constants import MT5_VENUE
         instrument_id = InstrumentId(
             Symbol(symbol.upper().strip()),
             MT5_VENUE,

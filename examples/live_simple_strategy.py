@@ -45,8 +45,8 @@ from nautilus_trader.model.objects import Quantity
 from nautilus_trader.trading.strategy import Strategy
 from nautilus_trader.config import StrategyConfig, LoggingConfig
 
-from nautilus_mt5.config import MT5Config
-from nautilus_mt5.factories import (
+from mt5connect.config import MT5Config
+from mt5connect.factories import (
     build_mt5_node_config,
     MT5LiveDataClientFactory,
     MT5LiveExecClientFactory,

@@ -10,8 +10,8 @@ import asyncio
 import pytest
 from unittest.mock import MagicMock, patch, call
 
-from nautilus_mt5.config import MT5Config
-from nautilus_mt5.factories import (
+from mt5connect.config import MT5Config
+from mt5connect.factories import (
     MT5LiveDataClientFactory,
     MT5LiveExecClientFactory,
     _get_or_create_connection,
@@ -19,9 +19,9 @@ from nautilus_mt5.factories import (
     clear_connection_registry,
     build_mt5_node_config,
 )
-from nautilus_mt5.data import MT5DataClient
-from nautilus_mt5.execution import MT5LiveExecutionClient
-from nautilus_mt5.constants import MT5_VENUE
+from mt5connect.data import MT5DataClient
+from mt5connect.execution import MT5LiveExecutionClient
+from mt5connect.constants import MT5_VENUE
 
 
 def make_config(account=12345678, server="Exness-MT5Trial1", symbols=None):
@@ -53,7 +53,7 @@ def make_live_exec_config(mt5_config):
 
 @pytest.fixture(autouse=True)
 def clean_registry():
-    from nautilus_mt5.factories import _mt5_config_registry
+    from mt5connect.factories import _mt5_config_registry
     clear_connection_registry()
     _mt5_config_registry.clear()
     yield
@@ -63,7 +63,7 @@ def clean_registry():
 
 @pytest.fixture
 def mock_mt5_conn():
-    with patch("nautilus_mt5.factories.MT5Connection") as MockConn:
+    with patch("mt5connect.factories.MT5Connection") as MockConn:
         instance = MagicMock()
         instance.connect    = MagicMock()
         instance.disconnect = MagicMock()
@@ -75,7 +75,7 @@ def mock_mt5_conn():
 
 @pytest.fixture
 def mock_provider():
-    from nautilus_mt5.providers import MT5InstrumentProvider as RealProvider
+    from mt5connect.providers import MT5InstrumentProvider as RealProvider
     from nautilus_trader.common.providers import InstrumentProvider
 
     real_instance = RealProvider.__new__(RealProvider)
@@ -84,7 +84,7 @@ def mock_provider():
     real_instance._failed_symbols = []
     real_instance.get_instrument = MagicMock(return_value=None)
 
-    with patch("nautilus_mt5.factories.MT5InstrumentProvider") as MockProv:
+    with patch("mt5connect.factories.MT5InstrumentProvider") as MockProv:
         MockProv.return_value = real_instance
         yield MockProv, real_instance
 
@@ -295,44 +295,44 @@ class TestBuildMt5NodeConfig:
         assert isinstance(result, TradingNodeConfig)
 
     def test_registry_keyed_by_venue_string(self):
-        from nautilus_mt5.factories import _mt5_config_registry
+        from mt5connect.factories import _mt5_config_registry
         build_mt5_node_config(make_config())
         assert "MT5" in _mt5_config_registry
 
     def test_data_factory_stored_in_registry(self):
-        from nautilus_mt5.factories import _mt5_config_registry
+        from mt5connect.factories import _mt5_config_registry
         build_mt5_node_config(make_config())
         assert _mt5_config_registry["MT5"]["data_factory"] is MT5LiveDataClientFactory
 
     def test_exec_factory_stored_in_registry(self):
-        from nautilus_mt5.factories import _mt5_config_registry
+        from mt5connect.factories import _mt5_config_registry
         build_mt5_node_config(make_config())
         assert _mt5_config_registry["MT5"]["exec_factory"] is MT5LiveExecClientFactory
 
     def test_mt5_config_stored_in_registry(self):
-        from nautilus_mt5.factories import _mt5_config_registry
+        from mt5connect.factories import _mt5_config_registry
         config = make_config()
         build_mt5_node_config(config)
         assert _mt5_config_registry["MT5"]["mt5_config"] is config
 
     def test_account_id_stored_in_registry(self):
-        from nautilus_mt5.factories import _mt5_config_registry
+        from mt5connect.factories import _mt5_config_registry
         build_mt5_node_config(make_config(account=12345678))
         assert _mt5_config_registry["MT5"]["account_id"] == "MT5-12345678"
 
     def test_load_ids_stored_in_registry(self):
-        from nautilus_mt5.factories import _mt5_config_registry
+        from mt5connect.factories import _mt5_config_registry
         build_mt5_node_config(make_config(symbols=["EURUSD", "XAUUSD"]))
         assert "EURUSD.MT5" in _mt5_config_registry["MT5"]["load_ids"]
         assert "XAUUSD.MT5" in _mt5_config_registry["MT5"]["load_ids"]
 
     def test_load_ids_count_matches_symbols(self):
-        from nautilus_mt5.factories import _mt5_config_registry
+        from mt5connect.factories import _mt5_config_registry
         build_mt5_node_config(make_config(symbols=["EURUSD", "XAUUSD", "BTCUSD"]))
         assert len(_mt5_config_registry["MT5"]["load_ids"]) == 3
 
     def test_single_symbol_load_ids(self):
-        from nautilus_mt5.factories import _mt5_config_registry
+        from mt5connect.factories import _mt5_config_registry
         build_mt5_node_config(make_config(symbols=["EURUSD"]))
         assert _mt5_config_registry["MT5"]["load_ids"] == ["EURUSD.MT5"]
 
@@ -371,7 +371,7 @@ class TestBuildMt5NodeConfig:
         assert result.exec_clients["MT5"].routing.default is True
 
     def test_registry_updated_on_repeated_call(self):
-        from nautilus_mt5.factories import _mt5_config_registry
+        from mt5connect.factories import _mt5_config_registry
         config1 = make_config(account=11111111)
         config2 = make_config(account=22222222)
         build_mt5_node_config(config1)

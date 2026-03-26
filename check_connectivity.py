@@ -129,15 +129,15 @@ def check_imports() -> bool:
     modules = [
         ("MetaTrader5",                    "pip install MetaTrader5"),
         ("nautilus_trader",                "pip install nautilus_trader"),
-        ("nautilus_mt5.config",            "check your install"),
-        ("nautilus_mt5.connection",        "check your install"),
-        ("nautilus_mt5.constants",         "check your install"),
-        ("nautilus_mt5.errors",            "check your install"),
-        ("nautilus_mt5.parsing",           "check your install"),
-        ("nautilus_mt5.providers",         "check your install"),
-        ("nautilus_mt5.data",              "check your install"),
-        ("nautilus_mt5.execution",         "check your install"),
-        ("nautilus_mt5.factories",         "check your install"),
+        ("mt5connect.config",            "check your install"),
+        ("mt5connect.connection",        "check your install"),
+        ("mt5connect.constants",         "check your install"),
+        ("mt5connect.errors",            "check your install"),
+        ("mt5connect.parsing",           "check your install"),
+        ("mt5connect.providers",         "check your install"),
+        ("mt5connect.data",              "check your install"),
+        ("mt5connect.execution",         "check your install"),
+        ("mt5connect.factories",         "check your install"),
     ]
 
     for mod, hint in modules:
@@ -204,8 +204,8 @@ def check_connection_class(account: int, password: str, server: str, timeout: fl
     """Layer 3 — MT5Connection + account info."""
     _header("Layer 3 — MT5Connection.get_account_info()")
 
-    from nautilus_mt5.config import MT5Config
-    from nautilus_mt5.connection import MT5Connection
+    from mt5connect.config import MT5Config
+    from mt5connect.connection import MT5Connection
 
     config = MT5Config(
         account=account,
@@ -243,9 +243,9 @@ def check_instrument_provider(account: int, password: str, server: str,
     """Layer 4 — Instrument parsing for each configured symbol."""
     _header("Layer 4 — Instrument parsing (MT5InstrumentProvider)")
 
-    from nautilus_mt5.config import MT5Config
-    from nautilus_mt5.connection import MT5Connection
-    from nautilus_mt5.providers import MT5InstrumentProvider
+    from mt5connect.config import MT5Config
+    from mt5connect.connection import MT5Connection
+    from mt5connect.providers import MT5InstrumentProvider
 
     config = MT5Config(
         account=account, password=password, server=server,
@@ -374,11 +374,11 @@ def check_client_construction(account: int, password: str, server: str,
     from nautilus_trader.test_kit.stubs.component import TestComponentStubs
     from nautilus_trader.common.component import LiveClock
     from nautilus_trader.common.providers import InstrumentProvider
-    from nautilus_mt5.config import MT5Config
-    from nautilus_mt5.connection import MT5Connection
-    from nautilus_mt5.providers import MT5InstrumentProvider
-    from nautilus_mt5.data import MT5DataClient
-    from nautilus_mt5.execution import MT5LiveExecutionClient
+    from mt5connect.config import MT5Config
+    from mt5connect.connection import MT5Connection
+    from mt5connect.providers import MT5InstrumentProvider
+    from mt5connect.data import MT5DataClient
+    from mt5connect.execution import MT5LiveExecutionClient
     import asyncio
 
     config = MT5Config(
@@ -450,9 +450,9 @@ def check_full_round_trip(account: int, password: str, server: str,
     """Layer 9 — Full adapter round-trip via factories."""
     _header("Layer 9 — Full round-trip (connect → instruments → tick → disconnect)")
 
-    from nautilus_mt5.config import MT5Config
-    from nautilus_mt5.connection import MT5Connection
-    from nautilus_mt5.providers import MT5InstrumentProvider
+    from mt5connect.config import MT5Config
+    from mt5connect.connection import MT5Connection
+    from mt5connect.providers import MT5InstrumentProvider
     import MetaTrader5 as mt5
 
     config = MT5Config(

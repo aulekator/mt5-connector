@@ -38,14 +38,14 @@ from unittest.mock import MagicMock, patch, call
 from nautilus_trader.model.identifiers import InstrumentId, Symbol
 from nautilus_trader.model.instruments import CurrencyPair, Cfd, CryptoPerpetual
 
-from nautilus_mt5.providers import MT5InstrumentProvider
-from nautilus_mt5.connection import MT5Connection, ConnectionState
-from nautilus_mt5.errors import (
+from mt5connect.providers import MT5InstrumentProvider
+from mt5connect.connection import MT5Connection, ConnectionState
+from mt5connect.errors import (
     MT5ConnectionError,
     MT5InstrumentError,
     MT5SymbolNotFoundError,
 )
-from nautilus_mt5.constants import MT5_VENUE
+from mt5connect.constants import MT5_VENUE
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -165,7 +165,7 @@ class TestLoadAllAsync:
 
     @pytest.mark.asyncio
     async def test_loads_all_symbols(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = ALL_SYMBOLS_INFO
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
@@ -177,7 +177,7 @@ class TestLoadAllAsync:
 
     @pytest.mark.asyncio
     async def test_loaded_symbol_names_correct(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = ALL_SYMBOLS_INFO
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
@@ -194,7 +194,7 @@ class TestLoadAllAsync:
 
     @pytest.mark.asyncio
     async def test_no_failed_symbols_on_clean_load(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = ALL_SYMBOLS_INFO
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
@@ -206,7 +206,7 @@ class TestLoadAllAsync:
 
     @pytest.mark.asyncio
     async def test_symbol_select_called_for_each_symbol(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = [EURUSD_INFO, GBPUSD_INFO]
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
@@ -220,7 +220,7 @@ class TestLoadAllAsync:
 
     @pytest.mark.asyncio
     async def test_eurusd_is_currency_pair(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = [EURUSD_INFO]
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
@@ -233,7 +233,7 @@ class TestLoadAllAsync:
 
     @pytest.mark.asyncio
     async def test_xauusd_is_cfd(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = [XAUUSD_INFO]
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = XAUUSD_INFO
@@ -246,7 +246,7 @@ class TestLoadAllAsync:
 
     @pytest.mark.asyncio
     async def test_btcusd_is_crypto_perpetual(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = [BTCUSD_INFO]
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = BTCUSD_INFO
@@ -266,7 +266,7 @@ class TestLoadAllAsyncFilter:
 
     @pytest.mark.asyncio
     async def test_filter_loads_only_requested(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = ALL_SYMBOLS_INFO
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
@@ -282,7 +282,7 @@ class TestLoadAllAsyncFilter:
 
     @pytest.mark.asyncio
     async def test_filter_case_insensitive(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = ALL_SYMBOLS_INFO
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
@@ -295,7 +295,7 @@ class TestLoadAllAsyncFilter:
 
     @pytest.mark.asyncio
     async def test_no_filter_loads_all(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = ALL_SYMBOLS_INFO
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
@@ -307,7 +307,7 @@ class TestLoadAllAsyncFilter:
 
     @pytest.mark.asyncio
     async def test_empty_filter_loads_nothing(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = ALL_SYMBOLS_INFO
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
@@ -332,7 +332,7 @@ class TestLoadAllAsyncPartialFailures:
                                    currency_base="USD",
                                    currency_profit="")  # empty → parse error on Cfd
 
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = [EURUSD_INFO, bad_info, GBPUSD_INFO]
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: {
@@ -352,7 +352,7 @@ class TestLoadAllAsyncPartialFailures:
     async def test_failed_symbols_recorded(self, provider):
         bad_info = make_symbol_info("BADSY", currency_base="USD", currency_profit="")
 
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = [EURUSD_INFO, bad_info]
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: {
@@ -370,7 +370,7 @@ class TestLoadAllAsyncPartialFailures:
     @pytest.mark.asyncio
     async def test_symbol_info_none_skipped(self, provider):
         """Symbol exists in symbols_get() but symbol_info() returns None."""
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = [EURUSD_INFO, GBPUSD_INFO]
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: (
@@ -393,7 +393,7 @@ class TestLoadAllAsyncSymbolsGetNone:
 
     @pytest.mark.asyncio
     async def test_raises_connection_error_when_symbols_get_none(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value = None
             mock_mt5.last_error.return_value  = (6, "No connection")
 
@@ -404,7 +404,7 @@ class TestLoadAllAsyncSymbolsGetNone:
 
     @pytest.mark.asyncio
     async def test_error_message_includes_mt5_error_code(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value = None
             mock_mt5.last_error.return_value  = (6, "No connection")
 
@@ -422,7 +422,7 @@ class TestLoadAllAsyncEmpty:
 
     @pytest.mark.asyncio
     async def test_empty_symbol_list_loads_nothing(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value = []
             mock_mt5.last_error.return_value  = (0, "No error")
 
@@ -432,7 +432,7 @@ class TestLoadAllAsyncEmpty:
 
     @pytest.mark.asyncio
     async def test_empty_list_no_exceptions(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value = []
             mock_mt5.last_error.return_value  = (0, "No error")
 
@@ -467,7 +467,7 @@ class TestLoadIdsAsync:
             InstrumentId.from_str("XAUUSD.MT5"),
         ]
 
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -482,7 +482,7 @@ class TestLoadIdsAsync:
     async def test_does_not_load_unrequested_symbols(self, provider):
         ids = [InstrumentId.from_str("EURUSD.MT5")]
 
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -496,7 +496,7 @@ class TestLoadIdsAsync:
     async def test_single_id_loaded_correctly(self, provider):
         ids = [InstrumentId.from_str("EURUSD.MT5")]
 
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -509,7 +509,7 @@ class TestLoadIdsAsync:
 
     @pytest.mark.asyncio
     async def test_empty_ids_list_loads_nothing(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             await provider.load_ids_async([])
 
         assert provider.count == 0
@@ -526,7 +526,7 @@ class TestLoadIdsAsyncNotFound:
     async def test_raises_when_symbol_not_found(self, provider):
         ids = [InstrumentId.from_str("FAKESYMBOL.MT5")]
 
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = False  # symbol doesn't exist
             mock_mt5.last_error.return_value    = (0, "No error")
 
@@ -559,7 +559,7 @@ class TestLoadIdsAsyncNotConnected:
 class TestLoadSymbol:
 
     def test_load_eurusd_returns_instrument(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -570,7 +570,7 @@ class TestLoadSymbol:
         assert isinstance(inst, CurrencyPair)
 
     def test_load_symbol_adds_to_cache(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -581,7 +581,7 @@ class TestLoadSymbol:
         assert "EURUSD" in provider.loaded_symbols
 
     def test_load_symbol_normalises_to_uppercase(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -591,7 +591,7 @@ class TestLoadSymbol:
         assert "EURUSD" in provider.loaded_symbols
 
     def test_load_xauusd_returns_cfd(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = XAUUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -601,7 +601,7 @@ class TestLoadSymbol:
         assert isinstance(inst, Cfd)
 
     def test_load_btcusd_returns_crypto_perpetual(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = BTCUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -618,7 +618,7 @@ class TestLoadSymbol:
 class TestLoadSymbolSelectFails:
 
     def test_raises_symbol_not_found_when_select_fails(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = False
             mock_mt5.last_error.return_value    = (0, "No error")
 
@@ -628,7 +628,7 @@ class TestLoadSymbolSelectFails:
         assert "FAKESYM" in str(exc_info.value)
 
     def test_error_message_helpful(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = False
             mock_mt5.last_error.return_value    = (0, "No error")
 
@@ -645,7 +645,7 @@ class TestLoadSymbolSelectFails:
 class TestLoadSymbolInfoNone:
 
     def test_raises_when_symbol_info_none(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = None
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -663,7 +663,7 @@ class TestLoadSymbolParseError:
     def test_raises_instrument_error_on_bad_currency(self, provider):
         bad_info = make_symbol_info("EURUSD", currency_base="")
 
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = bad_info
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -674,7 +674,7 @@ class TestLoadSymbolParseError:
     def test_failed_load_does_not_add_to_cache(self, provider):
         bad_info = make_symbol_info("EURUSD", currency_base="")
 
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = bad_info
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -708,7 +708,7 @@ class TestLoadSymbolNotConnected:
 class TestGetInstrument:
 
     def test_returns_instrument_after_load(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -721,7 +721,7 @@ class TestGetInstrument:
         assert provider.get_instrument("EURUSD") is None
 
     def test_case_insensitive(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -731,7 +731,7 @@ class TestGetInstrument:
         assert provider.get_instrument("EurUsd") is not None
 
     def test_correct_type_returned(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -741,7 +741,7 @@ class TestGetInstrument:
         assert isinstance(inst, CurrencyPair)
 
     def test_instrument_id_format_correct(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -762,7 +762,7 @@ class TestLoadedSymbols:
 
     @pytest.mark.asyncio
     async def test_contains_all_loaded_symbols(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = [EURUSD_INFO, XAUUSD_INFO]
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
@@ -790,7 +790,7 @@ class TestFailedSymbols:
     async def test_records_symbol_and_reason(self, provider):
         bad_info = make_symbol_info("BADSY", currency_base="USD", currency_profit="")
 
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = [bad_info]
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = bad_info
@@ -807,7 +807,7 @@ class TestFailedSymbols:
         """failed_symbols must reset on each load_all_async() call."""
         bad_info = make_symbol_info("BADSY", currency_base="USD", currency_profit="")
 
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = [bad_info]
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = bad_info
@@ -817,7 +817,7 @@ class TestFailedSymbols:
         assert len(provider.failed_symbols) == 1
 
         # Second call with clean data — failed list must be cleared
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = [EURUSD_INFO]
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
@@ -841,7 +841,7 @@ class TestCount:
 
     @pytest.mark.asyncio
     async def test_increments_with_each_loaded_symbol(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbols_get.return_value   = ALL_SYMBOLS_INFO
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
@@ -851,7 +851,7 @@ class TestCount:
         assert provider.count == 5
 
     def test_count_matches_list_all_length(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -867,7 +867,7 @@ class TestCount:
 class TestRepr:
 
     def test_repr_shows_loaded_count(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -893,7 +893,7 @@ class TestMultipleLoads:
 
     def test_load_symbol_twice_same_symbol_no_duplicate(self, provider):
         """Loading the same symbol twice should not duplicate it."""
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -905,7 +905,7 @@ class TestMultipleLoads:
         assert provider.count == 1
 
     def test_load_different_symbols_accumulate(self, provider):
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.last_error.return_value    = (0, "No error")
 
@@ -928,7 +928,7 @@ class TestLoadIdsAsyncScope:
     async def test_only_requested_symbols_loaded(self, provider):
         ids = [InstrumentId.from_str("EURUSD.MT5")]
 
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.return_value   = EURUSD_INFO
             mock_mt5.last_error.return_value    = (0, "No error")
@@ -947,7 +947,7 @@ class TestLoadIdsAsyncScope:
             InstrumentId.from_str("BTCUSD.MT5"),
         ]
 
-        with patch("nautilus_mt5.providers.mt5") as mock_mt5:
+        with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
             mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
             mock_mt5.last_error.return_value    = (0, "No error")

@@ -41,7 +41,7 @@ from nautilus_trader.model.enums import AssetClass, BarAggregation, PriceType
 from nautilus_trader.model.data import QuoteTick, Bar
 from nautilus_trader.model.objects import Price, Quantity
 
-from nautilus_mt5.parsing import (
+from mt5connect.parsing import (
     detect_instrument_type,
     make_margin,
     make_price_increment,
@@ -53,8 +53,8 @@ from nautilus_mt5.parsing import (
     resolve_price_precision,
     _MT5_TIMEFRAME_MAP,
 )
-from nautilus_mt5.errors import MT5InstrumentError
-from nautilus_mt5.constants import MT5_VENUE
+from mt5connect.errors import MT5InstrumentError
+from mt5connect.constants import MT5_VENUE
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -952,57 +952,57 @@ class TestSizePrecision:
 class TestNormalizeSymbol:
     """Tests for the normalize_symbol() function in constants.py."""
 
-    from nautilus_mt5.constants import normalize_symbol
+    from mt5connect.constants import normalize_symbol
 
     # Exness 'm' suffix (standard accounts)
     def test_eurusdm_normalized(self):
-        from nautilus_mt5.constants import normalize_symbol
+        from mt5connect.constants import normalize_symbol
         assert normalize_symbol("EURUSDm") == "EURUSD"
 
     def test_xauusdm_normalized(self):
-        from nautilus_mt5.constants import normalize_symbol
+        from mt5connect.constants import normalize_symbol
         assert normalize_symbol("XAUUSDm") == "XAUUSD"
 
     def test_btcusdm_normalized(self):
-        from nautilus_mt5.constants import normalize_symbol
+        from mt5connect.constants import normalize_symbol
         assert normalize_symbol("BTCUSDm") == "BTCUSD"
 
     def test_ustecm_normalized(self):
-        from nautilus_mt5.constants import normalize_symbol
+        from mt5connect.constants import normalize_symbol
         assert normalize_symbol("USTECm") == "USTEC"
 
     def test_btcjpym_normalized(self):
-        from nautilus_mt5.constants import normalize_symbol
+        from mt5connect.constants import normalize_symbol
         assert normalize_symbol("BTCJPYm") == "BTCJPY"
 
     # No suffix (IC Markets, Pepperstone, Exness zero)
     def test_eurusd_no_suffix_unchanged(self):
-        from nautilus_mt5.constants import normalize_symbol
+        from mt5connect.constants import normalize_symbol
         assert normalize_symbol("EURUSD") == "EURUSD"
 
     def test_xauusd_no_suffix_unchanged(self):
-        from nautilus_mt5.constants import normalize_symbol
+        from mt5connect.constants import normalize_symbol
         assert normalize_symbol("XAUUSD") == "XAUUSD"
 
     # 'c' suffix
     def test_eurusdc_normalized(self):
-        from nautilus_mt5.constants import normalize_symbol
+        from mt5connect.constants import normalize_symbol
         assert normalize_symbol("EURUSDc") == "EURUSD"
 
     # Trailing dot
     def test_eurusd_dot_normalized(self):
-        from nautilus_mt5.constants import normalize_symbol
+        from mt5connect.constants import normalize_symbol
         assert normalize_symbol("EURUSD.") == "EURUSD"
 
     # Output is always uppercase
     def test_output_always_uppercase(self):
-        from nautilus_mt5.constants import normalize_symbol
+        from mt5connect.constants import normalize_symbol
         assert normalize_symbol("eurusdm") == "EURUSD"
         assert normalize_symbol("EurUsdM") == "EURUSD"
 
     # Whitespace stripped
     def test_whitespace_stripped(self):
-        from nautilus_mt5.constants import normalize_symbol
+        from mt5connect.constants import normalize_symbol
         assert normalize_symbol("  EURUSDm  ") == "EURUSD"
 
 

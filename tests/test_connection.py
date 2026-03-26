@@ -32,8 +32,8 @@ Test groups:
 import asyncio
 import pytest
 from unittest.mock import MagicMock, call, patch
-from nautilus_mt5.connection import MT5Connection, ConnectionState, AccountSnapshot
-from nautilus_mt5.errors import MT5ConnectionError, MT5LoginError
+from mt5connect.connection import MT5Connection, ConnectionState, AccountSnapshot
+from mt5connect.errors import MT5ConnectionError, MT5LoginError
 
 
 # ═════════════════════════════════════════════════════════════════════════════

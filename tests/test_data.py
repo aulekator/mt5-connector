@@ -30,10 +30,10 @@ from nautilus_trader.model.instruments import CurrencyPair
 from nautilus_trader.model.objects import Price, Quantity
 from nautilus_trader.model.data import QuoteTick, Bar
 
-from nautilus_mt5.data import MT5DataClient, _nanos_to_datetime, _bar_spec_to_mt5_timeframe
-from nautilus_mt5.connection import ConnectionState
-from nautilus_mt5.errors import MT5ConnectionError
-from nautilus_mt5.constants import MT5_VENUE
+from mt5connect.data import MT5DataClient, _nanos_to_datetime, _bar_spec_to_mt5_timeframe
+from mt5connect.connection import ConnectionState
+from mt5connect.errors import MT5ConnectionError
+from mt5connect.constants import MT5_VENUE
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
@@ -90,7 +90,7 @@ def make_raw_rate(time_s=1_700_000_000, open_=1.085, high=1.090,
     arr = np.array([(time_s, open_, high, low, close, tick_volume, 2, 0)], dtype=dtype)
     return arr[0]
 def make_config(symbols=None):
-    from nautilus_mt5.config import MT5Config
+    from mt5connect.config import MT5Config
     return MT5Config(
         account=12345678,
         password="test",
@@ -116,8 +116,8 @@ def make_provider(instrument=None):
     PyCondition.type() rejects MagicMock, so we must use a real subclass.
     We override the methods to return test data without touching MT5.
     """
-    from nautilus_mt5.providers import MT5InstrumentProvider
-    from nautilus_mt5.connection import MT5Connection
+    from mt5connect.providers import MT5InstrumentProvider
+    from mt5connect.connection import MT5Connection
 
     # Minimal connection mock that satisfies MT5Connection's interface
     conn = MagicMock(spec=MT5Connection)
@@ -225,28 +225,28 @@ class TestBarSpecToMt5Timeframe:
 
     def test_m1_returns_1(self):
         bt = self._make_bar_type(1, "MINUTE")
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.TIMEFRAME_H1 = 16385
             result = _bar_spec_to_mt5_timeframe(bt)
         assert result == 1
 
     def test_m5_returns_5(self):
         bt = self._make_bar_type(5, "MINUTE")
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.TIMEFRAME_H1 = 16385
             result = _bar_spec_to_mt5_timeframe(bt)
         assert result == 5
 
     def test_m15_returns_15(self):
         bt = self._make_bar_type(15, "MINUTE")
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.TIMEFRAME_H1 = 16385
             result = _bar_spec_to_mt5_timeframe(bt)
         assert result == 15
 
     def test_h1_returns_16385(self):
         bt = self._make_bar_type(1, "HOUR")
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.TIMEFRAME_H1 = 16385
             mock_mt5.TIMEFRAME_H4 = 16388
             result = _bar_spec_to_mt5_timeframe(bt)
@@ -254,7 +254,7 @@ class TestBarSpecToMt5Timeframe:
 
     def test_h4_returns_16388(self):
         bt = self._make_bar_type(4, "HOUR")
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.TIMEFRAME_H1 = 16385
             mock_mt5.TIMEFRAME_H4 = 16388
             result = _bar_spec_to_mt5_timeframe(bt)
@@ -262,7 +262,7 @@ class TestBarSpecToMt5Timeframe:
 
     def test_d1_returns_correct(self):
         bt = self._make_bar_type(1, "DAY")
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.TIMEFRAME_D1 = 16408
             mock_mt5.TIMEFRAME_H1 = 16385
             result = _bar_spec_to_mt5_timeframe(bt)
@@ -270,7 +270,7 @@ class TestBarSpecToMt5Timeframe:
 
     def test_unknown_falls_back_to_h1(self):
         bt = self._make_bar_type(999, "MINUTE")
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.TIMEFRAME_H1 = 16385
             result = _bar_spec_to_mt5_timeframe(bt)
         assert result == 16385
@@ -470,14 +470,14 @@ class TestPollOnce:
     @pytest.mark.asyncio
     async def test_does_nothing_when_no_subscriptions(self, client):
         client._subscribed_ticks.clear()
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             await client._poll_once()
         mock_mt5.symbol_info_tick.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_calls_symbol_info_tick_for_subscribed(self, client):
         client._subscribed_ticks.add("EURUSDm")
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.symbol_info_tick.return_value = make_raw_tick()
             await client._poll_once()
         mock_mt5.symbol_info_tick.assert_called_once_with("EURUSDm")
@@ -486,7 +486,7 @@ class TestPollOnce:
     async def test_emits_quote_tick_on_new_data(self, client):
         client._subscribed_ticks.add("EURUSDm")
         raw = make_raw_tick(time_msc=1_700_000_000_000)
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.symbol_info_tick.return_value = raw
             await client._poll_once()
         client._handle_data.assert_called_once()
@@ -499,7 +499,7 @@ class TestPollOnce:
         raw = make_raw_tick(time_msc=1_700_000_000_000)
         # Pre-set last known time to same value
         client._last_tick_time["EURUSDm"] = 1_700_000_000_000
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.symbol_info_tick.return_value = raw
             await client._poll_once()
         # Should NOT emit because time_msc unchanged
@@ -511,7 +511,7 @@ class TestPollOnce:
         # First tick
         client._last_tick_time["EURUSDm"] = 1_700_000_000_000
         raw = make_raw_tick(time_msc=1_700_000_001_000)  # new time
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.symbol_info_tick.return_value = raw
             await client._poll_once()
         client._handle_data.assert_called_once()
@@ -520,7 +520,7 @@ class TestPollOnce:
     async def test_updates_last_tick_time(self, client):
         client._subscribed_ticks.add("EURUSDm")
         raw = make_raw_tick(time_msc=9_999_999_000)
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.symbol_info_tick.return_value = raw
             await client._poll_once()
         assert client._last_tick_time["EURUSDm"] == 9_999_999_000
@@ -528,7 +528,7 @@ class TestPollOnce:
     @pytest.mark.asyncio
     async def test_skips_none_tick(self, client):
         client._subscribed_ticks.add("EURUSDm")
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.symbol_info_tick.return_value = None
             await client._poll_once()
         client._handle_data.assert_not_called()
@@ -538,7 +538,7 @@ class TestPollOnce:
         client._subscribed_ticks.add("UNKNOWN")
         client._provider.get_instrument.return_value = None
         raw = make_raw_tick(time_msc=1_700_000_000_000)
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.symbol_info_tick.return_value = raw
             await client._poll_once()
         client._handle_data.assert_not_called()
@@ -548,7 +548,7 @@ class TestPollOnce:
         for sym in ["EURUSDm", "XAUUSDm"]:
             client._subscribed_ticks.add(sym)
         raw = make_raw_tick(time_msc=1_700_000_000_000)
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.symbol_info_tick.return_value = raw
             await client._poll_once()
         assert mock_mt5.symbol_info_tick.call_count == 2
@@ -562,7 +562,7 @@ class TestPollOnce:
             if sym == "EURUSDm":
                 raise RuntimeError("IPC error")
             return make_raw_tick(time_msc=1_700_000_000_000)
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.symbol_info_tick.side_effect = side_effect
             await client._poll_once()
         # Both symbols were attempted
@@ -627,7 +627,7 @@ class TestRequestQuoteTicks:
         raw_ticks = [make_raw_tick(time_s=1_700_000_000 + i, time_msc=(1_700_000_000+i)*1000)
                      for i in range(10)]
 
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.COPY_TICKS_ALL = -1
             mock_mt5.copy_ticks_range.return_value = raw_ticks
             await client._request_quote_ticks(request)
@@ -644,7 +644,7 @@ class TestRequestQuoteTicks:
         request.end   = 1_700_100_000_000_000_000
         request.id    = "req-002"
 
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.COPY_TICKS_ALL = -1
             mock_mt5.copy_ticks_range.return_value = []
             await client._request_quote_ticks(request)
@@ -661,7 +661,7 @@ class TestRequestQuoteTicks:
         request.end   = None
         request.id    = "req-003"
 
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.COPY_TICKS_ALL = -1
             mock_mt5.copy_ticks_range.return_value = None
             await client._request_quote_ticks(request)
@@ -678,7 +678,7 @@ class TestRequestQuoteTicks:
         request.end   = 1_700_100_000_000_000_000
         request.id    = "req-004"
 
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             await client._request_quote_ticks(request)
 
         mock_mt5.copy_ticks_range.assert_not_called()
@@ -698,13 +698,13 @@ class TestRequestBars:
 
         raw_bars = [make_raw_rate(time_s=1_700_000_000 + i*3600) for i in range(5)]
 
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.TIMEFRAME_H1   = 16385
             mock_mt5.TIMEFRAME_H4   = 16388
             mock_mt5.TIMEFRAME_D1   = 16408
             mock_mt5.copy_rates_range.return_value = raw_bars
             # Mock _bar_spec_to_mt5_timeframe return
-            with patch("nautilus_mt5.data._bar_spec_to_mt5_timeframe", return_value=16385):
+            with patch("mt5connect.data._bar_spec_to_mt5_timeframe", return_value=16385):
                 await client._request_bars(request)
 
         client._handle_bars.assert_called_once()
@@ -719,9 +719,9 @@ class TestRequestBars:
         request.end   = 1_700_100_000_000_000_000
         request.id    = "req-bars-002"
 
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
+        with patch("mt5connect.data.mt5") as mock_mt5:
             mock_mt5.copy_rates_range.return_value = []
-            with patch("nautilus_mt5.data._bar_spec_to_mt5_timeframe", return_value=16385):
+            with patch("mt5connect.data._bar_spec_to_mt5_timeframe", return_value=16385):
                 await client._request_bars(request)
 
         client._handle_bars.assert_called_once()
@@ -737,8 +737,8 @@ class TestRequestBars:
         request.end   = None
         request.id    = "req-bars-003"
 
-        with patch("nautilus_mt5.data.mt5") as mock_mt5:
-            with patch("nautilus_mt5.data._bar_spec_to_mt5_timeframe", return_value=16385):
+        with patch("mt5connect.data.mt5") as mock_mt5:
+            with patch("mt5connect.data._bar_spec_to_mt5_timeframe", return_value=16385):
                 await client._request_bars(request)
 
         mock_mt5.copy_rates_range.assert_not_called()

@@ -86,13 +86,13 @@ from nautilus_trader.model.identifiers import (
 from nautilus_trader.model.objects import Money, Price, Quantity
 from nautilus_trader.model.currencies import USD
 
-from nautilus_mt5.constants import MT5_MAGIC_NUMBER, MT5_VENUE, FILLING_MODE
-from nautilus_mt5.errors import MT5ConnectionError, MT5OrderError
+from mt5connect.constants import MT5_MAGIC_NUMBER, MT5_VENUE, FILLING_MODE
+from mt5connect.errors import MT5ConnectionError, MT5OrderError
 
 if TYPE_CHECKING:
-    from nautilus_mt5.config import MT5Config
-    from nautilus_mt5.connection import MT5Connection
-    from nautilus_mt5.providers import MT5InstrumentProvider
+    from mt5connect.config import MT5Config
+    from mt5connect.connection import MT5Connection
+    from mt5connect.providers import MT5InstrumentProvider
 
 logger = logging.getLogger(__name__)
 

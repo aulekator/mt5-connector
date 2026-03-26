@@ -6,7 +6,7 @@ This is the only file users need to touch to connect their broker.
 """
 
 from dataclasses import dataclass
-from nautilus_mt5.constants import (
+from mt5connect.constants import (
     DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_EXEC_POLL_INTERVAL_MS,
     RECONNECT_INITIAL_DELAY_S,

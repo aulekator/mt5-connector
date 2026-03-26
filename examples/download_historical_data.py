@@ -14,10 +14,10 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
-from nautilus_mt5.config import MT5Config
-from nautilus_mt5.connection import MT5Connection
-from nautilus_mt5.providers import MT5InstrumentProvider
-from nautilus_mt5.downloader import MT5DataDownloader
+from mt5connect.config import MT5Config
+from mt5connect.connection import MT5Connection
+from mt5connect.providers import MT5InstrumentProvider
+from mt5connect.downloader import MT5DataDownloader
 
 # Load credentials from .env in the project root
 load_dotenv(Path(__file__).parent.parent / ".env")

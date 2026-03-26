@@ -1,8 +1,8 @@
-# nautilus-mt5
+# mt5connect
 
 **NautilusTrader adapter for MetaTrader 5**  live trading and backtesting on any MT5 broker (Exness, IC Markets, Pepperstone, and more).
 
-[![PyPI version](https://badge.fury.io/py/nautilus-mt5.svg)](https://badge.fury.io/py/nautilus-mt5)
+[![PyPI version](https://badge.fury.io/py/mt5connect.svg)](https://badge.fury.io/py/mt5connect)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](https://www.microsoft.com/windows)
@@ -11,10 +11,10 @@
 
 ## What this is
 
-`nautilus-mt5` is a **data and execution adapter** that connects [NautilusTrader](https://nautilustrader.io) to any MetaTrader 5 broker. Write your strategy once in Python, then run it as a backtest against historical MT5 data  or flip a switch and run it live.
+`mt5connect` is a **data and execution adapter** that connects [NautilusTrader](https://nautilustrader.io) to any MetaTrader 5 broker. Write your strategy once in Python, then run it as a backtest against historical MT5 data  or flip a switch and run it live.
 
 ```
-MT5 Terminal (Windows) ←→ nautilus-mt5 ←→ NautilusTrader
+MT5 Terminal (Windows) ←→ mt5connect ←→ NautilusTrader
                               ↑
                     tick polling, order routing,
                     account state, reconciliation
@@ -61,14 +61,14 @@ MT5 Terminal (Windows) ←→ nautilus-mt5 ←→ NautilusTrader
 ## Installation
 
 ```bash
-pip install nautilus-mt5
+pip install mt5connect
 ```
 
 Or install from source for development:
 
 ```bash
-git clone https://github.com/aulekator/nautilus-mt5
-cd nautilus-mt5
+git clone https://github.com/aulekator/mt5connect
+cd mt5connect
 pip install -e ".[dev]"
 ```
 
@@ -116,7 +116,7 @@ python examples/live_simple_strategy.py
 All configuration goes through `MT5Config`. The only required fields are your account credentials and symbols.
 
 ```python
-from nautilus_mt5.config import MT5Config
+from mt5connect.config import MT5Config
 
 config = MT5Config(
     account  = 12345678,            # MT5 account number
@@ -159,7 +159,7 @@ config = MT5Config(
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from nautilus_mt5.config import MT5Config
+from mt5connect.config import MT5Config
 
 load_dotenv(Path(__file__).parent / ".env")
 
@@ -293,10 +293,10 @@ This connects to MT5, downloads H1 bars for the configured symbol, and writes th
 You can customise the download by editing the script, or call the downloader directly:
 
 ```python
-from nautilus_mt5.config import MT5Config
-from nautilus_mt5.connection import MT5Connection
-from nautilus_mt5.providers import MT5InstrumentProvider
-from nautilus_mt5.downloader import MT5DataDownloader
+from mt5connect.config import MT5Config
+from mt5connect.connection import MT5Connection
+from mt5connect.providers import MT5InstrumentProvider
+from mt5connect.downloader import MT5DataDownloader
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 from datetime import datetime, timezone
 
@@ -428,8 +428,8 @@ from decimal import Decimal
 from pathlib import Path
 from dotenv import load_dotenv
 from nautilus_trader.live.node import TradingNode
-from nautilus_mt5.config import MT5Config
-from nautilus_mt5.factories import (
+from mt5connect.config import MT5Config
+from mt5connect.factories import (
     build_mt5_node_config,
     MT5LiveDataClientFactory,
     MT5LiveExecClientFactory,
@@ -535,8 +535,8 @@ tests/test_providers.py    — MT5InstrumentProvider loading
 ## Project structure
 
 ```
-nautilus-mt5/
-├── nautilus_mt5/
+mt5connect/
+├── mt5connect/
 │   ├── config.py        # MT5Config — all user-facing configuration
 │   ├── connection.py    # MT5Connection — terminal IPC lifecycle
 │   ├── constants.py     # venue, magic number, symbol sets, normalize_symbol()

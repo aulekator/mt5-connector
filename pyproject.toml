@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "nautilus_mt5"
+name = "mt5connect"
 version = "0.1.0"
 description = "NautilusTrader adapter for MetaTrader 5 — live trading and backtesting on any MT5 broker"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [
-    { name = "nautilus-mt5 contributors" },
+    { name = "mt5connect contributors" },
 ]
 keywords = [
     "algorithmic-trading",
@@ -50,13 +50,13 @@ dev = [
 ]
 
 [project.urls]
-Homepage   = "https://github.com/aulekator/nautilus_mt5"
-Repository = "https://github.com/aulekator/nautilus_mt5"
-Issues     = "https://github.com/aulekator/nautilus_mt5/issues"
-Changelog  = "https://github.com/aulekator/nautilus_mt5/blob/main/CHANGELOG.md"
+Homepage   = "https://github.com/aulekator/mt5connect"
+Repository = "https://github.com/aulekator/mt5connect"
+Issues     = "https://github.com/aulekator/mt5connect/issues"
+Changelog  = "https://github.com/aulekator/mt5connect/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
-packages = ["nautilus_mt5"]
+packages = ["mt5connect"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

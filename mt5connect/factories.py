@@ -10,8 +10,8 @@ and NautilusTrader calls them at startup.
 
 Usage (typical)
 ---------------
-    from nautilus_mt5.config   import MT5Config
-    from nautilus_mt5.factories import build_mt5_node_config
+    from mt5connect.config   import MT5Config
+    from mt5connect.factories import build_mt5_node_config
 
     config = MT5Config(
         account=12345678,
@@ -28,7 +28,7 @@ Usage (typical)
 
 Advanced (manual wiring)
 ------------------------
-    from nautilus_mt5.factories import MT5LiveDataClientFactory, MT5LiveExecClientFactory
+    from mt5connect.factories import MT5LiveDataClientFactory, MT5LiveExecClientFactory
 
     data_config = LiveDataEngineConfig(
         data_client_configs={
@@ -58,12 +58,12 @@ from nautilus_trader.config import (
 from nautilus_trader.live.factories import LiveDataClientFactory, LiveExecClientFactory
 from nautilus_trader.model.identifiers import AccountId
 
-from nautilus_mt5.config import MT5Config
-from nautilus_mt5.connection import MT5Connection
-from nautilus_mt5.constants import MT5_VENUE
-from nautilus_mt5.data import MT5DataClient
-from nautilus_mt5.execution import MT5LiveExecutionClient
-from nautilus_mt5.providers import MT5InstrumentProvider
+from mt5connect.config import MT5Config
+from mt5connect.connection import MT5Connection
+from mt5connect.constants import MT5_VENUE
+from mt5connect.data import MT5DataClient
+from mt5connect.execution import MT5LiveExecutionClient
+from mt5connect.providers import MT5InstrumentProvider
 
 if TYPE_CHECKING:
     pass

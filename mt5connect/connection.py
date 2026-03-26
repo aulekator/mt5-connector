@@ -9,10 +9,10 @@ from typing import TYPE_CHECKING
 
 import MetaTrader5 as mt5
 
-from nautilus_mt5.errors import MT5ConnectionError, MT5LoginError
+from mt5connect.errors import MT5ConnectionError, MT5LoginError
 
 if TYPE_CHECKING:
-    from nautilus_mt5.config import MT5Config
+    from mt5connect.config import MT5Config
 
 logger = logging.getLogger(__name__)
 

@@ -35,7 +35,7 @@ from nautilus_trader.model.instruments import Cfd, CryptoPerpetual, CurrencyPair
 from nautilus_trader.model.data import Bar, BarType, BarSpecification, QuoteTick
 from nautilus_trader.model.objects import Price, Quantity
 
-from nautilus_mt5.constants import (
+from mt5connect.constants import (
     MT5_VENUE,
     CRYPTO_SYMBOLS,
     ENERGY_SYMBOLS,
@@ -45,7 +45,7 @@ from nautilus_mt5.constants import (
     PRICE_PRECISION_OVERRIDES,
     normalize_symbol,
 )
-from nautilus_mt5.errors import MT5InstrumentError
+from mt5connect.errors import MT5InstrumentError
 
 # Union type for any instrument this adapter produces
 InstrumentAny = Union[CurrencyPair, Cfd, CryptoPerpetual]

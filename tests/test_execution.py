@@ -64,10 +64,10 @@ from nautilus_trader.model.identifiers import (
 from nautilus_trader.model.instruments import CurrencyPair
 from nautilus_trader.model.objects import Price, Quantity
 
-from nautilus_mt5.connection import ConnectionState
-from nautilus_mt5.errors import MT5ConnectionError
-from nautilus_mt5.constants import MT5_VENUE
-from nautilus_mt5.execution import (
+from mt5connect.connection import ConnectionState
+from mt5connect.errors import MT5ConnectionError
+from mt5connect.constants import MT5_VENUE
+from mt5connect.execution import (
     MT5LiveExecutionClient,
     _time_in_force_to_mt5,
     _mt5_retcode_to_str,
@@ -86,7 +86,7 @@ MAGIC = 510
 
 @pytest.fixture
 def config():
-    from nautilus_mt5.config import MT5Config
+    from mt5connect.config import MT5Config
     return MT5Config(
         account=12345678,
         password="test_password",
@@ -102,7 +102,7 @@ def config():
 @pytest.fixture
 def mock_mt5_exec():
     """Patches MetaTrader5 for execution tests."""
-    with patch("nautilus_mt5.execution.mt5") as mock:
+    with patch("mt5connect.execution.mt5") as mock:
         # Connection
         mock.initialize.return_value = True
         mock.login.return_value = True
@@ -219,8 +219,8 @@ def make_provider(instrument=None):
     Build a real MT5InstrumentProvider — NautilusTrader's PyCondition.type()
     rejects MagicMock, so we must use the real class with a mocked connection.
     """
-    from nautilus_mt5.providers import MT5InstrumentProvider
-    from nautilus_mt5.connection import MT5Connection
+    from mt5connect.providers import MT5InstrumentProvider
+    from mt5connect.connection import MT5Connection
     from nautilus_trader.common.providers import InstrumentProvider
 
     conn = MagicMock(spec=MT5Connection)
@@ -340,7 +340,7 @@ class TestNautilusOrderToMt5Pending:
         assert _nautilus_order_to_mt5_pending(OrderType.STOP_LIMIT, OrderSide.SELL) == mt5.ORDER_TYPE_SELL_STOP_LIMIT
 
     def test_unsupported_raises(self):
-        from nautilus_mt5.errors import MT5OrderError
+        from mt5connect.errors import MT5OrderError
         with pytest.raises(MT5OrderError):
             _nautilus_order_to_mt5_pending(OrderType.TRAILING_STOP_MARKET, OrderSide.BUY)
 

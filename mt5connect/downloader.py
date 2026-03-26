@@ -14,10 +14,10 @@ Two main classes:
 Usage
 -----
     from datetime import datetime
-    from nautilus_mt5.downloader import MT5DataDownloader
-    from nautilus_mt5.config import MT5Config
-    from nautilus_mt5.connection import MT5Connection
-    from nautilus_mt5.providers import MT5InstrumentProvider
+    from mt5connect.downloader import MT5DataDownloader
+    from mt5connect.config import MT5Config
+    from mt5connect.connection import MT5Connection
+    from mt5connect.providers import MT5InstrumentProvider
     from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
     config = MT5Config(
@@ -61,12 +61,12 @@ import numpy as np
 from nautilus_trader.model.data import Bar, QuoteTick
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
-from nautilus_mt5.errors import MT5ConnectionError, MT5SymbolNotFoundError
-from nautilus_mt5.parsing import parse_bar, parse_quote_tick
+from mt5connect.errors import MT5ConnectionError, MT5SymbolNotFoundError
+from mt5connect.parsing import parse_bar, parse_quote_tick
 
 if TYPE_CHECKING:
-    from nautilus_mt5.connection import MT5Connection
-    from nautilus_mt5.providers import MT5InstrumentProvider
+    from mt5connect.connection import MT5Connection
+    from mt5connect.providers import MT5InstrumentProvider
 
 logger = logging.getLogger(__name__)
 
