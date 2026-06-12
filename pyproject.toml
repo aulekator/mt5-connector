@@ -10,7 +10,7 @@ readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 authors = [
-    { name = "mt5connect contributors" },
+    { name = "mt5-connector contributors" },
 ]
 keywords = [
     "algorithmic-trading",
@@ -50,10 +50,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage   = "https://github.com/aulekator/mt5-connect"
-Repository = "https://github.com/aulekator/mt5-connect"
-Issues     = "https://github.com/aulekator/mt5-connect/issues"
-Changelog  = "https://github.com/aulekator/mt5-connect/blob/main/CHANGELOG.md"
+Homepage   = "https://github.com/aulekator/mt5-connector"
+Repository = "https://github.com/aulekator/mt5-connector"
+Issues     = "https://github.com/aulekator/mt5-connector/issues"
+Changelog  = "https://github.com/aulekator/mt5-connector/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["mt5connect"]
