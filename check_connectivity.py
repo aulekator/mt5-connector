@@ -8,7 +8,7 @@ every layer of the adapter is wired correctly:
 
     python check_connectivity.py
 
-Or with explicit credentials:
+Or with explicit credentials (overrides .env):
 
     python check_connectivity.py --account 12345678 --password "pw" --server "Exness-MT5Trial9" --symbols EURUSDm XAUUSDm
 
@@ -36,7 +36,10 @@ import argparse
 import sys
 import time
 import traceback
+import os
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
+from dotenv import load_dotenv
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ANSI colours (safe on all modern terminals)
@@ -74,7 +77,34 @@ def _error(label: str, exc: Exception) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# PARSE ARGS
+# LOAD .ENV FILE
+# ─────────────────────────────────────────────────────────────────────────────
+
+def load_env_config():
+    """Load MT5 credentials from .env file in project root."""
+    # Look for .env in current directory and parent directories
+    env_path = Path.cwd() / ".env"
+    if not env_path.exists():
+        # Try parent directory (if running from examples/)
+        env_path = Path.cwd().parent / ".env"
+    
+    if env_path.exists():
+        load_dotenv(env_path)
+        print(f"  Loaded config from: {env_path}")
+        return True
+    else:
+        print(f"  {YELLOW}No .env file found — will prompt for credentials{RESET}")
+        return False
+
+
+def get_env_or_none(key: str) -> str | None:
+    """Get environment variable value or None."""
+    val = os.getenv(key)
+    return val if val and val.strip() else None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PARSE ARGS (with .env fallback)
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _parse_args():
@@ -83,38 +113,41 @@ def _parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    p.add_argument("--account",  type=int,   default=None, help="MT5 account number")
-    p.add_argument("--password", type=str,   default=None, help="MT5 password")
-    p.add_argument("--server",   type=str,   default=None, help="MT5 server name")
-    p.add_argument("--symbols",  nargs="+",  default=None, help="MT5 symbol names")
+    p.add_argument("--account",  type=int,   default=None, help="MT5 account number (overrides .env)")
+    p.add_argument("--password", type=str,   default=None, help="MT5 password (overrides .env)")
+    p.add_argument("--server",   type=str,   default=None, help="MT5 server name (overrides .env)")
+    p.add_argument("--symbols",  nargs="+",  default=None, help="MT5 symbol names (overrides .env)")
     p.add_argument("--timeout",  type=float, default=10.0, help="Connection timeout (s)")
     return p.parse_args()
 
 
-def _prompt_if_missing(args):
-    """Interactively prompt for any missing required fields."""
-    if args.account is None:
-        try:
-            args.account = int(input("MT5 account number: ").strip())
-        except (ValueError, EOFError):
-            print(f"{RED}Invalid account number.{RESET}")
-            sys.exit(1)
-
-    if args.password is None:
-        import getpass
-        try:
-            args.password = getpass.getpass("MT5 password: ")
-        except EOFError:
-            args.password = input("MT5 password: ").strip()
-
-    if args.server is None:
-        args.server = input("MT5 server (e.g. Exness-MT5Trial9): ").strip()
-
-    if not args.symbols:
-        raw = input("Symbols to test (space-separated, e.g. EURUSDm XAUUSDm): ").strip()
-        args.symbols = raw.split() if raw else ["EURUSD"]
-
-    return args
+def get_config(args):
+    """Get config from args with .env fallback."""
+    # Load .env first
+    load_env_config()
+    
+    # Determine values (args take precedence over env)
+    account = args.account
+    if account is None:
+        account_str = get_env_or_none("MT5_ACCOUNT")
+        if account_str:
+            account = int(account_str)
+    
+    password = args.password
+    if password is None:
+        password = get_env_or_none("MT5_PASSWORD")
+    
+    server = args.server
+    if server is None:
+        server = get_env_or_none("MT5_SERVER")
+    
+    symbols = args.symbols
+    if symbols is None:
+        symbols_str = get_env_or_none("MT5_SYMBOLS")
+        if symbols_str:
+            symbols = [s.strip() for s in symbols_str.split(",")]
+    
+    return account, password, server, symbols
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -436,8 +469,9 @@ def check_client_construction(account: int, password: str, server: str,
             instrument_provider=prov,
             config=config,
         )
+        # Use the public account_id property (not private _account_id)
         _result("MT5LiveExecutionClient.__init__()", True,
-                f"account_id={exec_client._account_id}")
+                f"account_id={exec_client.account_id}")
     except Exception as exc:
         _error("MT5LiveExecutionClient.__init__()", exc)
         all_ok = False
@@ -518,11 +552,35 @@ def main() -> int:
     print(f"{'═' * 60}")
 
     args = _parse_args()
-    args = _prompt_if_missing(args)
+    account, password, server, symbols = get_config(args)
 
-    print(f"\n  account : {args.account}")
-    print(f"  server  : {args.server}")
-    print(f"  symbols : {args.symbols}")
+    # Validate we have all required credentials
+    missing = []
+    if account is None:
+        missing.append("account")
+    if password is None:
+        missing.append("password")
+    if server is None:
+        missing.append("server")
+    
+    if missing:
+        print(f"\n{RED}Missing required credentials: {', '.join(missing)}{RESET}")
+        print(f"\n  Set them in your .env file or pass via command line:")
+        print(f"    --account, --password, --server")
+        print(f"\n  Example .env file:")
+        print(f"    MT5_ACCOUNT=12345678")
+        print(f"    MT5_PASSWORD=your_password")
+        print(f"    MT5_SERVER=Exness-MT5Trial9")
+        print(f"    MT5_SYMBOLS=EURUSDm,XAUUSDm")
+        return 1
+    
+    if not symbols:
+        symbols = ["EURUSD"]
+        print(f"  {YELLOW}No symbols specified — using default: {symbols}{RESET}")
+
+    print(f"\n  account : {account}")
+    print(f"  server  : {server}")
+    print(f"  symbols : {symbols}")
     print(f"  timeout : {args.timeout}s")
 
     results: dict[str, bool] = {}
@@ -543,7 +601,7 @@ def main() -> int:
 
     # Layer 2 — login
     results["login"] = check_login(
-        args.account, args.password, args.server, args.timeout
+        account, password, server, args.timeout
     )
 
     if not results["login"]:
@@ -552,22 +610,22 @@ def main() -> int:
 
     # Layers 3-9 — only run if login succeeded
     results["connection_class"]  = check_connection_class(
-        args.account, args.password, args.server, args.timeout
+        account, password, server, args.timeout
     )
     results["instruments"]       = check_instrument_provider(
-        args.account, args.password, args.server, args.symbols, args.timeout
+        account, password, server, symbols, args.timeout
     )
     results["live_ticks"]        = check_live_ticks(
-        args.account, args.password, args.server, args.symbols, args.timeout
+        account, password, server, symbols, args.timeout
     )
     results["historical_bars"]   = check_historical_bars(
-        args.account, args.password, args.server, args.symbols, args.timeout
+        account, password, server, symbols, args.timeout
     )
     results["client_construct"]  = check_client_construction(
-        args.account, args.password, args.server, args.symbols, args.timeout
+        account, password, server, symbols, args.timeout
     )
     results["round_trip"]        = check_full_round_trip(
-        args.account, args.password, args.server, args.symbols, args.timeout
+        account, password, server, symbols, args.timeout
     )
 
     # ── Summary ──────────────────────────────────────────────────────────────
