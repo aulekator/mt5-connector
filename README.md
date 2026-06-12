@@ -614,7 +614,26 @@ Note: this package only installs successfully on Windows. It cannot be installed
 
 ---
 
-## Contributing
+## Changelog
+
+### 0.1.1 (2026-06-12)
+
+**Bug fix:** `MT5LiveExecutionClient` no longer replays historical deals from the current day's MT5 history as fills when the node starts up. Previously, restarting the node mid-session caused NautilusTrader to emit `WARN/ERROR` log entries like:
+
+```
+Order with ClientOrderId('MT5-xxxx') not found in the cache to apply OrderFilled(...)
+Cannot apply event to any order: ... not found in cache
+```
+
+because fills from prior sessions were re-emitted into an execution engine that had no record of those orders.
+
+**Root cause:** `_processed_deal_keys` was empty on startup, so the first execution poll replayed every deal since UTC midnight.
+
+**Fix:** `_connect()` now calls `_seed_processed_deals()` before starting the poll loop. This pre-populates `_processed_deal_keys` with all existing deals in the silence window (UTC midnight → now) without emitting them as fills. A secondary guard in `_emit_fill()` also silently skips any deal whose order is not registered with NT in the current session, rather than synthesising a fake `ClientOrderId` and pushing it through `generate_order_filled`.
+
+---
+
+
 
 Pull requests are welcome. Run the test suite before submitting:
 
