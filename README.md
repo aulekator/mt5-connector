@@ -1,10 +1,10 @@
-# mt5connect
+# mt5-connector
 
 **Unofficial community MetaTrader 5 adapter for NautilusTrader** — live trading and backtesting on any MT5 broker (Exness, IC Markets, Pepperstone, and more).
 
 > ⚠️ **Disclaimer:** This is an independent community project. It is **not** affiliated with, endorsed by, or supported by [Nautech Systems Pty Ltd](https://nautilustrader.io) or the official [NautilusTrader](https://nautilustrader.io) project.
 
-[![PyPI version](https://badge.fury.io/py/mt5connect.svg)](https://badge.fury.io/py/mt5connect)
+[![PyPI version](https://badge.fury.io/py/mt5-connector.svg)](https://badge.fury.io/py/mt5-connector)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](https://www.microsoft.com/windows)
@@ -14,10 +14,10 @@
 
 ## What this is
 
-`mt5connect` is a **data and execution adapter** that connects [NautilusTrader](https://nautilustrader.io) to any MetaTrader 5 broker. Write your strategy once in Python, then run it as a backtest against historical MT5 data  or flip a switch and run it live.
+`mt5-connector` is a **data and execution adapter** that connects [NautilusTrader](https://nautilustrader.io) to any MetaTrader 5 broker. Write your strategy once in Python, then run it as a backtest against historical MT5 data  or flip a switch and run it live.
 
 ```
-MT5 Terminal (Windows) ←→ mt5connect ←→ NautilusTrader
+MT5 Terminal (Windows) ←→ mt5-connector ←→ NautilusTrader
                               ↑
                     tick polling, order routing,
                     account state, reconciliation
@@ -64,14 +64,14 @@ MT5 Terminal (Windows) ←→ mt5connect ←→ NautilusTrader
 ## Installation
 
 ```bash
-pip install mt5connect
+pip install mt5-connector
 ```
 
 Or install from source for development:
 
 ```bash
 git clone https://github.com/aulekator/mt5-connect
-cd mt5connect
+cd mt5-connector
 pip install -e ".[dev]"
 ```
 
@@ -538,7 +538,7 @@ tests/test_providers.py    — MT5InstrumentProvider loading
 ## Project structure
 
 ```
-mt5connect/
+mt5-connector/
 ├── mt5connect/
 │   ├── config.py        # MT5Config — all user-facing configuration
 │   ├── connection.py    # MT5Connection — terminal IPC lifecycle
@@ -600,7 +600,7 @@ You are using an old version of `factories.py` where `MT5LiveExecClientFactory` 
 
 Check that the bar type string in your strategy config exactly matches the bar type you subscribed to in `on_start`. A mismatch means `on_bar` is never called. Also verify AutoTrading is enabled in the MT5 terminal.
 
-Note: this package only installs successfully on Windows. It cannot be installed on macOS or Linux.
+Note: `mt5-connector` only installs successfully on Windows. It cannot be installed on macOS or Linux.
 
 ---
 
@@ -616,7 +616,7 @@ Note: this package only installs successfully on Windows. It cannot be installed
 
 ## Changelog
 
-### 0.1.1 (2026-06-12)
+### 0.1.0 (2026-06-12)
 
 **Bug fix:** `MT5LiveExecutionClient` no longer replays historical deals from the current day's MT5 history as fills when the node starts up. Previously, restarting the node mid-session caused NautilusTrader to emit `WARN/ERROR` log entries like:
 
