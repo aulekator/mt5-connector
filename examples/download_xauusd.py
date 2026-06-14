@@ -39,7 +39,7 @@ import MetaTrader5 as mt5
 # LOAD CREDENTIALS
 # ─────────────────────────────────────────────────────────────────────────────
 
-load_dotenv(Path(__file__).parent.parent / ".env")
+load_dotenv(Path(__file__).parent / ".env")
 
 def _require(key: str) -> str:
     val = os.getenv(key)

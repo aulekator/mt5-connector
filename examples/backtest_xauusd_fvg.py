@@ -26,7 +26,7 @@ from nautilus_trader.model.identifiers import InstrumentId, Venue, TraderId
 from nautilus_trader.model.objects import Money, Price, Quantity
 from nautilus_trader.persistence.catalog import ParquetDataCatalog
 
-from fvg_strategy import FVGStrategy, FVGStrategyConfig
+from strategy import FVGStrategy, FVGStrategyConfig
 
 import pandas as pd
 
@@ -36,7 +36,7 @@ import pandas as pd
 # ─────────────────────────────────────────────────────────────────────────────
 
 CATALOG_PATH = "./catalog"
-SYMBOL = "XAUUSDm"  # Change to "XAUUSD" if your broker uses no suffix
+SYMBOL = "XAUUSD"  # Change to "XAUUSD" if your broker uses no suffix
 VENUE_STR = "MT5"
 START = datetime(2024, 1, 1, tzinfo=timezone.utc)
 END = datetime(2024, 12, 31, tzinfo=timezone.utc)
