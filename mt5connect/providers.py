@@ -93,11 +93,12 @@ class MT5InstrumentProvider(InstrumentProvider):
         self._conn.ensure_connected()
         self._failed_symbols.clear()
 
-        # Apply symbol filter if provided
-        # Use `is not None` (not just truthy) so an empty list [] means "load nothing"
-        symbol_filter: list[str] | None = None
+        # Keep requested symbols in broker casing; filter resolution happens after
+        # symbols_get() so exact broker names can win before alias fallback.
+        # Use `is not None` (not just truthy) so an empty list [] means "load nothing".
+        requested_symbols: list[str] | None = None
         if filters is not None and "symbols" in filters:
-            symbol_filter = [s.upper().strip() for s in filters["symbols"]]
+            requested_symbols = [s.strip() for s in filters["symbols"]]
 
         # Get all available symbols from broker
         all_symbols = mt5.symbols_get()
@@ -113,6 +114,31 @@ class MT5InstrumentProvider(InstrumentProvider):
         filtered = 0
 
         logger.info(f"MT5InstrumentProvider: loading {total} symbols from broker")
+
+        # Resolve the user filter to actual broker symbols while preserving the
+        # broker-provided symbol strings that parse_symbol_info() will register.
+        symbol_filter: set[str] | None = None
+        if requested_symbols is not None:
+            available_symbols = [sym_info.name for sym_info in all_symbols]
+            available_symbol_set = set(available_symbols)
+            symbol_filter = set()
+
+            # First pass prefers exact broker names such as EURUSDm over any
+            # case-insensitive alias that may also exist.
+            fallback_symbols: list[str] = []
+            for requested in requested_symbols:
+                if requested in available_symbol_set:
+                    symbol_filter.add(requested)
+                else:
+                    fallback_symbols.append(requested)
+
+            # Second pass keeps existing convenience behavior for callers who
+            # pass lowercase or mixed-case symbols.
+            for requested in fallback_symbols:
+                requested_upper = requested.upper()
+                for available in available_symbols:
+                    if available.upper() == requested_upper:
+                        symbol_filter.add(available)
 
         for sym_info in all_symbols:
             symbol = sym_info.name
@@ -265,11 +291,29 @@ class MT5InstrumentProvider(InstrumentProvider):
             Symbol name (e.g. "EURUSD"). Case-insensitive.
         """
         from mt5connect.constants import MT5_VENUE
-        instrument_id = InstrumentId(
-            Symbol(symbol.upper().strip()),
-            MT5_VENUE,
-        )
-        return self.find(instrument_id)
+
+        # Empty input cannot form a Nautilus Symbol and should behave as a miss.
+        raw = symbol.strip()
+        if not raw:
+            return None
+
+        # Prefer exact broker symbols before uppercase fallback to preserve
+        # suffixes like EURUSDm that are already loaded under their real ID.
+        candidates = [raw, raw.upper()]
+        for candidate in dict.fromkeys(candidates):
+            instrument_id = InstrumentId(Symbol(candidate), MT5_VENUE)
+            instrument = self.find(instrument_id)
+            if instrument is not None:
+                return instrument
+
+        # Final scan supports practical case-insensitive aliases for loaded
+        # symbols whose broker casing does not match the request exactly.
+        raw_upper = raw.upper()
+        for instrument in self.list_all():
+            if instrument.id.symbol.value.upper() == raw_upper:
+                return instrument
+
+        return None
 
     @property
     def loaded_symbols(self) -> list[str]:
