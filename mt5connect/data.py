@@ -2,40 +2,6 @@
 nautilus_mt5/data.py
 
 MT5DataClient — streams live market data from MT5 into NautilusTrader.
-
-Since MT5 has no WebSocket or push API, this client runs an async polling
-loop that calls mt5.symbol_info_tick() at a configurable interval (default
-100ms) for each subscribed symbol and emits QuoteTick events onto the
-NautilusTrader MessageBus.
-
-Also implements _request_quote_ticks and _request_bars using the downloader
-so the same client serves both historical data requests and live streaming.
-
-Architecture
-------------
-  _connect()
-    └─ loads instruments via provider
-    └─ starts _poll_loop() as asyncio Task
-
-  _poll_loop()  (runs every poll_interval_ms)
-    └─ for each subscribed symbol:
-         mt5.symbol_info_tick(symbol)
-         → parse_quote_tick()
-         → _handle_data(tick)   ← emits to MessageBus → strategy.on_quote_tick()
-
-  _subscribe_quote_ticks()
-    └─ adds symbol to self._subscribed set
-
-  _unsubscribe_quote_ticks()
-    └─ removes symbol from self._subscribed set
-
-  _request_quote_ticks()
-    └─ fetches historical ticks via mt5.copy_ticks_range()
-    └─ _handle_quote_ticks(ticks, ...)
-
-  _request_bars()
-    └─ fetches historical bars via mt5.copy_rates_range()
-    └─ _handle_bars(bars, ...)
 """
 
 from __future__ import annotations
@@ -75,21 +41,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-
 class MT5DataClient(LiveMarketDataClient):
     """
     Streams live market data from MT5 into NautilusTrader via polling.
-
-    Parameters
-    ----------
-    loop : asyncio.AbstractEventLoop
-    connection : MT5Connection
-        Active MT5 connection — must be connected before _connect() is called.
-    msgbus : MessageBus
-    cache : Cache
-    clock : LiveClock
-    instrument_provider : MT5InstrumentProvider
-    config : MT5Config
     """
 
     def __init__(
@@ -111,48 +65,39 @@ class MT5DataClient(LiveMarketDataClient):
             clock=clock,
             instrument_provider=instrument_provider,
         )
-        self._conn     = connection
-        self._config   = config
+        self._conn = connection
+        self._config = config
         self._provider = instrument_provider
 
-        # Symbols currently subscribed for live tick streaming
-        self._subscribed_ticks: set[str]     = set()
-        # Bar types currently subscribed for live bar streaming
-        self._subscribed_bars: set[str]      = set()
-
-        # The asyncio polling task — created in _connect, cancelled in _disconnect
+        self._subscribed_symbols: set[str] = set()
+        self._subscribed_bar_types: set[str] = set()
         self._poll_task: asyncio.Task | None = None
-
-        # Last known tick per symbol — used to suppress duplicate ticks
-        # (MT5 returns the same tick if price hasn't moved)
         self._last_tick_time: dict[str, int] = {}
-
-    # ── Required: connect / disconnect ───────────────────────────────────────
+        self._is_connected = False
+        self._pending_subscriptions: set[str] = set()
 
     async def _connect(self) -> None:
-        """
-        Called by NautilusTrader on node startup.
-
-        Sequence:
-          1. Verify MT5 connection is alive
-          2. Load all instruments via provider
-          3. Emit each instrument to the data engine
-          4. Start the polling loop
-        """
+        """Called by NautilusTrader on node startup."""
         self._conn.ensure_connected()
+        self._is_connected = True
 
-        # Load instruments for all configured symbols
         for symbol in self._config.symbols:
-            try:
-                instrument = self._provider.get_instrument(symbol)
-                if instrument is None:
-                    instrument = self._provider.load_symbol(symbol)
-                self._handle_data(instrument)
-                self._log.info(f"MT5DataClient: loaded instrument {symbol}")
-            except Exception as exc:
-                self._log.error(f"MT5DataClient: failed to load {symbol}: {exc}")
+            instrument = self._provider.get_instrument(symbol)
+            if instrument is None:
+                instrument = self._provider.load_symbol(symbol)
+            self._handle_data(instrument)
+            self._log.info(f"MT5DataClient: loaded instrument {symbol}")
 
-        # Start the async polling loop — use running loop to avoid cross-loop issues
+            if symbol not in self._subscribed_symbols:
+                self._subscribed_symbols.add(symbol)
+
+        await asyncio.sleep(0.5)
+
+        for symbol in list(self._pending_subscriptions):
+            if symbol not in self._subscribed_symbols:
+                self._subscribed_symbols.add(symbol)
+            self._pending_subscriptions.discard(symbol)
+
         self._poll_task = asyncio.get_event_loop().create_task(
             self._poll_loop(),
             name="MT5DataClient._poll_loop",
@@ -163,51 +108,71 @@ class MT5DataClient(LiveMarketDataClient):
         )
 
     async def _disconnect(self) -> None:
-        """Cancel the polling loop cleanly."""
+        self._is_connected = False
         if self._poll_task and not self._poll_task.done():
             self._poll_task.cancel()
-            try:
-                await self._poll_task
-            except asyncio.CancelledError:
-                pass
+            await self._poll_task
             self._poll_task = None
 
-        self._subscribed_ticks.clear()
-        self._subscribed_bars.clear()
+        self._subscribed_symbols.clear()
+        self._subscribed_bar_types.clear()
         self._last_tick_time.clear()
+        self._pending_subscriptions.clear()
         self._log.info("MT5DataClient: disconnected")
-
-    # ── Subscribe / unsubscribe ───────────────────────────────────────────────
 
     async def _subscribe_quote_ticks(self, command: SubscribeQuoteTicks) -> None:
         symbol = command.instrument_id.symbol.value
-        self._subscribed_ticks.add(symbol)
+
+        if not self._is_connected:
+            self._pending_subscriptions.add(symbol)
+            return
+
+        self._subscribed_symbols.add(symbol)
         self._log.debug(f"MT5DataClient: subscribed ticks → {symbol}")
 
     async def _unsubscribe_quote_ticks(self, command: UnsubscribeQuoteTicks) -> None:
         symbol = command.instrument_id.symbol.value
-        self._subscribed_ticks.discard(symbol)
+        self._subscribed_symbols.discard(symbol)
         self._last_tick_time.pop(symbol, None)
+        self._pending_subscriptions.discard(symbol)
         self._log.debug(f"MT5DataClient: unsubscribed ticks → {symbol}")
 
     async def _subscribe_bars(self, command: SubscribeBars) -> None:
-        """
-        MT5 does not push bar completions — we note the subscription but
-        bars are delivered via _request_bars when strategy needs history.
-        Live bar formation is handled by NautilusTrader's BarAggregator
-        using the incoming QuoteTicks.
-        """
         bar_type_str = str(command.bar_type)
-        self._subscribed_bars.add(bar_type_str)
+        self._subscribed_bar_types.add(bar_type_str)
+
+        symbol = command.bar_type.instrument_id.symbol.value
+
+        if not self._is_connected:
+            self._pending_subscriptions.add(symbol)
+            return
+
+        if symbol not in self._subscribed_symbols:
+            self._subscribed_symbols.add(symbol)
+            self._log.debug(
+                f"MT5DataClient: auto-subscribed ticks for bar aggregation → {symbol}"
+            )
+
         self._log.debug(f"MT5DataClient: subscribed bars → {bar_type_str}")
 
     async def _unsubscribe_bars(self, command: UnsubscribeBars) -> None:
         bar_type_str = str(command.bar_type)
-        self._subscribed_bars.discard(bar_type_str)
-        self._log.debug(f"MT5DataClient: unsubscribed bars → {bar_type_str}")
+        self._subscribed_bar_types.discard(bar_type_str)
 
-    # ── No-op stubs for optional methods we don't support ────────────────────
-    # MT5 doesn't provide order book, trade ticks, funding rates, etc.
+        symbol = command.bar_type.instrument_id.symbol.value
+        instrument_prefix = f"{command.bar_type.instrument_id.value}-"
+        still_needed = any(
+            bt.startswith(instrument_prefix) for bt in self._subscribed_bar_types
+        )
+        if not still_needed:
+            self._subscribed_symbols.discard(symbol)
+            self._last_tick_time.pop(symbol, None)
+            self._pending_subscriptions.discard(symbol)
+            self._log.debug(
+                f"MT5DataClient: auto-unsubscribed ticks (no bars left) → {symbol}"
+            )
+
+        self._log.debug(f"MT5DataClient: unsubscribed bars → {bar_type_str}")
 
     async def _subscribe(self, command: SubscribeData) -> None:
         pass
@@ -275,18 +240,13 @@ class MT5DataClient(LiveMarketDataClient):
     async def _unsubscribe_instrument_close(self, command) -> None:
         pass
 
-    # ── Historical data requests ──────────────────────────────────────────────
-
     async def _request(self, request: RequestData) -> None:
         pass
 
     async def _request_instrument(self, request) -> None:
         symbol = request.instrument_id.symbol.value
-        try:
-            instrument = self._provider.load_symbol(symbol)
-            self._handle_instrument(instrument, request.id)
-        except Exception as exc:
-            self._log.error(f"MT5DataClient: _request_instrument failed: {exc}")
+        instrument = self._provider.load_symbol(symbol)
+        self._handle_instrument(instrument, request.id)
 
     async def _request_instruments(self, request) -> None:
         await self._provider.load_all_async()
@@ -294,13 +254,9 @@ class MT5DataClient(LiveMarketDataClient):
         self._handle_instruments(instruments, MT5_VENUE, request.id)
 
     async def _request_quote_ticks(self, request: RequestQuoteTicks) -> None:
-        """
-        Fetch historical ticks from MT5 and deliver to the data engine.
-        Called when a strategy requests historical tick data.
-        """
-        symbol     = request.instrument_id.symbol.value
-        start      = _nanos_to_datetime(request.start)
-        end        = _nanos_to_datetime(request.end) if request.end else datetime.now(timezone.utc)
+        symbol = request.instrument_id.symbol.value
+        start = _nanos_to_datetime(request.start)
+        end = _nanos_to_datetime(request.end) if request.end else datetime.now(timezone.utc)
 
         instrument = self._provider.get_instrument(symbol)
         if instrument is None:
@@ -309,36 +265,49 @@ class MT5DataClient(LiveMarketDataClient):
 
         self._conn.ensure_connected()
 
-        try:
-            raw = mt5.copy_ticks_range(
-                symbol,
-                start,
-                end,
-                mt5.COPY_TICKS_ALL,
-            )
+        raw = mt5.copy_ticks_range(
+            symbol,
+            start,
+            end,
+            mt5.COPY_TICKS_ALL,
+        )
 
-            if raw is None or len(raw) == 0:
-                self._log.warning(f"MT5DataClient: no ticks for {symbol} {start}→{end}")
-                self._handle_quote_ticks([], instrument.id, request.id)
-                return
+        if raw is None or len(raw) == 0:
+            self._log.warning(f"MT5DataClient: no ticks for {symbol} {start}→{end}")
+            # _handle_quote_ticks signature: (instrument_id, ticks, correlation_id, start, end, params)
+            self._handle_quote_ticks(instrument.id, [], request.id, request.start, request.end, request.params)
+            return
 
-            ticks = [parse_quote_tick(row, instrument) for row in raw]
-            self._handle_quote_ticks(ticks, instrument.id, request.id)
-            self._log.debug(f"MT5DataClient: delivered {len(ticks):,} ticks for {symbol}")
+        ticks = [parse_quote_tick(row, instrument) for row in raw]
+        # _handle_quote_ticks signature: (instrument_id, ticks, correlation_id, start, end, params)
+        self._handle_quote_ticks(instrument.id, ticks, request.id, request.start, request.end, request.params)
+        self._log.debug(f"MT5DataClient: delivered {len(ticks):,} ticks for {symbol}")
 
-        except Exception as exc:
-            self._log.error(f"MT5DataClient: _request_quote_ticks failed: {exc}")
-
+    # ================================================================
+    # FIXED: _request_bars with correct _handle_bars signature (6 args)
+    # ================================================================
     async def _request_bars(self, request: RequestBars) -> None:
-        """
-        Fetch historical bars from MT5 and deliver to the data engine.
-        Called when a strategy requests historical bar data.
-        """
-        bar_type   = request.bar_type
-        symbol     = bar_type.instrument_id.symbol.value
-        timeframe  = _bar_spec_to_mt5_timeframe(bar_type)
-        start      = _nanos_to_datetime(request.start)
-        end        = _nanos_to_datetime(request.end) if request.end else datetime.now(timezone.utc)
+        bar_type = request.bar_type
+        symbol = bar_type.instrument_id.symbol.value
+        timeframe = _bar_spec_to_mt5_timeframe(bar_type)
+
+        # Handle start time
+        if request.start is not None:
+            if hasattr(request.start, 'timestamp'):
+                start = datetime.fromtimestamp(request.start.timestamp(), tz=timezone.utc)
+            else:
+                start = _nanos_to_datetime(request.start)
+        else:
+            start = None
+
+        # Handle end time
+        if request.end is not None:
+            if hasattr(request.end, 'timestamp'):
+                end = datetime.fromtimestamp(request.end.timestamp(), tz=timezone.utc)
+            else:
+                end = _nanos_to_datetime(request.end)
+        else:
+            end = datetime.now(timezone.utc)
 
         instrument = self._provider.get_instrument(symbol)
         if instrument is None:
@@ -347,20 +316,18 @@ class MT5DataClient(LiveMarketDataClient):
 
         self._conn.ensure_connected()
 
-        try:
-            raw = mt5.copy_rates_range(symbol, timeframe, start, end)
+        raw = mt5.copy_rates_range(symbol, timeframe, start, end)
 
-            if raw is None or len(raw) == 0:
-                self._log.warning(f"MT5DataClient: no bars for {symbol} TF={timeframe}")
-                self._handle_bars([], bar_type, request.id)
-                return
+        if raw is None or len(raw) == 0:
+            self._log.warning(f"MT5DataClient: no bars for {symbol} TF={timeframe}")
+            # _handle_bars signature: (bar_type, bars, correlation_id, start, end, params)
+            self._handle_bars(bar_type, [], request.id, request.start, request.end, request.params)
+            return
 
-            bars = [parse_bar(row, instrument, timeframe) for row in raw]
-            self._handle_bars(bars, bar_type, request.id)
-            self._log.debug(f"MT5DataClient: delivered {len(bars):,} bars for {symbol}")
-
-        except Exception as exc:
-            self._log.error(f"MT5DataClient: _request_bars failed: {exc}")
+        bars = [parse_bar(row, instrument, timeframe) for row in raw]
+        # _handle_bars signature: (bar_type, bars, correlation_id, start, end, params)
+        self._handle_bars(bar_type, bars, request.id, request.start, request.end, request.params)
+        self._log.debug(f"MT5DataClient: delivered {len(bars):,} bars for {symbol}")
 
     async def _request_order_book_snapshot(self, request) -> None:
         self._log.warning("MT5 does not support order book snapshots")
@@ -371,130 +338,88 @@ class MT5DataClient(LiveMarketDataClient):
     async def _request_funding_rates(self, request) -> None:
         self._log.warning("MT5 does not provide funding rates")
 
-    # ── Core polling loop ─────────────────────────────────────────────────────
-
     async def _poll_loop(self) -> None:
-        """
-        Main polling loop — runs for the lifetime of the data client.
-
-        Every poll_interval_ms:
-          1. For each subscribed symbol, call mt5.symbol_info_tick()
-          2. If tick timestamp changed (new tick), emit QuoteTick
-          3. Sleep until next poll
-
-        On MT5 connection error:
-          - Attempt reconnect via conn.reconnect_async()
-          - If reconnect fails, stop the loop (node must be restarted)
-        """
         self._log.info("MT5DataClient: poll loop started")
 
         while True:
-            try:
-                await self._poll_once()
-                await asyncio.sleep(self._config.poll_interval_s)
-
-            except asyncio.CancelledError:
-                self._log.info("MT5DataClient: poll loop cancelled")
-                break
-
-            except MT5ConnectionError as exc:
-                self._log.warning(f"MT5DataClient: connection lost — {exc}")
-                ok = await self._conn.reconnect_async()
-                if not ok:
-                    self._log.error("MT5DataClient: reconnect failed — stopping poll loop")
-                    break
-                self._log.info("MT5DataClient: reconnected — resuming poll loop")
-
-            except Exception as exc:
-                self._log.error(f"MT5DataClient: unexpected poll error — {exc}")
-                await asyncio.sleep(1.0)  # brief pause before retrying
-
-        self._log.info("MT5DataClient: poll loop stopped")
+            await self._poll_once()
+            await asyncio.sleep(self._config.poll_interval_s)
 
     async def _poll_once(self) -> None:
-        """
-        Single poll iteration — fetch one tick per subscribed symbol.
-        Called from _poll_loop every poll_interval_ms.
-        """
-        if not self._subscribed_ticks:
+        """Single poll iteration — fetch one tick per subscribed symbol."""
+
+        if not self._subscribed_symbols:
             return
 
         self._conn.ensure_connected()
 
-        for symbol in list(self._subscribed_ticks):
-            try:
+        for symbol in list(self._subscribed_symbols):
+
+            if not mt5.symbol_select(symbol, True):
+                await asyncio.sleep(0.1)
+                if not mt5.symbol_select(symbol, True):
+                    continue
+
+            raw_tick = None
+
+            for attempt in range(3):
                 raw_tick = mt5.symbol_info_tick(symbol)
-                if raw_tick is None:
-                    continue
+                if raw_tick is not None:
+                    break
+                await asyncio.sleep(0.05)
 
-                # Suppress duplicate ticks (same timestamp = no new data)
-                tick_time_ms = raw_tick.time_msc
-                if self._last_tick_time.get(symbol) == tick_time_ms:
-                    continue
-                self._last_tick_time[symbol] = tick_time_ms
+            if raw_tick is None:
+                continue
 
-                instrument = self._provider.get_instrument(symbol)
-                if instrument is None:
-                    continue
+            tick_time_ms = raw_tick.time_msc
+            if self._last_tick_time.get(symbol) == tick_time_ms:
+                continue
+            self._last_tick_time[symbol] = tick_time_ms
 
-                tick = parse_quote_tick(raw_tick, instrument)
-                self._handle_data(tick)
+            instrument = self._provider.get_instrument(symbol)
+            if instrument is None:
+                continue
 
-            except Exception as exc:
-                self._log.error(f"MT5DataClient: poll error for {symbol}: {exc}")
+            tick = parse_quote_tick(raw_tick, instrument)
 
-    # ── Properties ────────────────────────────────────────────────────────────
+            self._handle_data(tick)
 
-    @property
-    def subscribed_quote_ticks(self) -> list[str]:
+    def subscribed_quote_ticks(self) -> tuple[str, ...]:
         """Currently subscribed symbols."""
-        return sorted(self._subscribed_ticks)
+        return tuple(sorted(self._subscribed_symbols))
 
     @property
     def is_polling(self) -> bool:
         """True if the poll loop task is running."""
         return self._poll_task is not None and not self._poll_task.done()
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# HELPERS
-# ─────────────────────────────────────────────────────────────────────────────
-
 def _nanos_to_datetime(nanos: int | None) -> datetime | None:
-    """Convert NautilusTrader nanosecond timestamp to UTC datetime."""
     if nanos is None:
         return None
     return datetime.fromtimestamp(nanos / 1_000_000_000, tz=timezone.utc)
 
-
 def _bar_spec_to_mt5_timeframe(bar_type) -> int:
-    """
-    Convert a NautilusTrader BarType to an MT5 timeframe constant.
-
-    Falls back to TIMEFRAME_H1 for unsupported specs.
-    """
     from nautilus_trader.model.enums import BarAggregation
 
     spec = bar_type.spec
-    agg  = spec.aggregation
+    agg = spec.aggregation
     step = spec.step
 
-    # Minute timeframes
     if agg == BarAggregation.MINUTE:
         tf_map = {1: 1, 2: 2, 3: 3, 4: 4, 5: 5, 6: 6,
                   10: 10, 12: 12, 15: 15, 20: 20, 30: 30}
         return tf_map.get(step, mt5.TIMEFRAME_H1)
 
-    # Hour timeframes
     if agg == BarAggregation.HOUR:
         tf_map = {1: mt5.TIMEFRAME_H1, 2: 16386, 3: 16387, 4: mt5.TIMEFRAME_H4,
                   6: 16390, 8: 16392, 12: 16396}
         return tf_map.get(step, mt5.TIMEFRAME_H1)
 
-    # Daily / weekly / monthly
-    if agg == BarAggregation.DAY:   return mt5.TIMEFRAME_D1
-    if agg == BarAggregation.WEEK:  return 32769
-    if agg == BarAggregation.MONTH: return 49153
+    if agg == BarAggregation.DAY:
+        return mt5.TIMEFRAME_D1
+    if agg == BarAggregation.WEEK:
+        return 32769
+    if agg == BarAggregation.MONTH:
+        return 49153
 
-    # Fallback
     return mt5.TIMEFRAME_H1
