@@ -423,3 +423,5 @@ def _bar_spec_to_mt5_timeframe(bar_type) -> int:
         return 49153
 
     return mt5.TIMEFRAME_H1
+
+#fix

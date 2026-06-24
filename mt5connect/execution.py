@@ -79,10 +79,12 @@ from nautilus_trader.model.identifiers import (
     ClientId,
     ClientOrderId,
     InstrumentId,
+    StrategyId,
     Symbol,
     TradeId,
     VenueOrderId,
 )
+from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.model.objects import Money, Price, Quantity
 from nautilus_trader.model.currencies import USD
 
@@ -857,6 +859,17 @@ class MT5LiveExecutionClient(LiveExecutionClient):
             # Order placed in a previous session or externally; synthesise one
             client_order_id = ClientOrderId(f"MT5-{deal.order}")
 
+        # Skip deals from previous sessions that have no order in the cache.
+        # NT reconciliation already handles the open position — emitting a fill
+        # for an unknown order just produces ERROR noise with no benefit.
+        if not self._ticket_to_client_order_id.get(deal.order):
+            if self._cache.order(client_order_id) is None:
+                self._log.debug(
+                    f"MT5LiveExecutionClient: skipping pre-session deal "
+                    f"ticket={deal.ticket} order={deal.order} — no cached order"
+                )
+                return
+
         venue_order_id = VenueOrderId(str(deal.order))
         trade_id       = TradeId(str(deal.ticket))
 
@@ -866,31 +879,50 @@ class MT5LiveExecutionClient(LiveExecutionClient):
             else OrderSide.SELL
         )
 
-        # Commission: MT5 stores as negative float, NT wants positive Money
+        # ================================================================
+        # FIXED: Get account currency safely for commission
+        # ================================================================
         try:
-            currency   = _parse_account_currency(deal.currency or "USD")
-            commission = Money(abs(deal.commission or 0.0), currency)
+            # Try to get currency from deal first
+            deal_currency = getattr(deal, 'currency', None)
+            if deal_currency:
+                currency = _parse_account_currency(deal_currency)
+            else:
+                # Fallback: get account info
+                account_info = mt5.account_info()
+                if account_info and hasattr(account_info, 'currency'):
+                    currency = _parse_account_currency(account_info.currency)
+                else:
+                    currency = USD
         except Exception:
-            commission = Money(0.0, USD)
+            currency = USD
+
+        commission = Money(abs(deal.commission or 0.0), currency)
 
         ts_event = int(deal.time) * 1_000_000_000   # seconds → nanoseconds
-        ts_init  = self._clock.timestamp_ns()
+
+        # Recover strategy_id from cache if order is known, else use EXTERNAL
+        strategy_id = StrategyId("EXTERNAL-001")
+        cached_order = self._cache.order(client_order_id)
+        if cached_order is not None:
+            strategy_id = cached_order.strategy_id
 
         try:
             self.generate_order_filled(
-                instrument_id   = InstrumentId(Symbol(symbol), MT5_VENUE),
-                client_order_id = client_order_id,
-                venue_order_id  = venue_order_id,
-                trade_id        = trade_id,
-                order_side      = order_side,
-                order_type      = OrderType.MARKET,
-                last_qty        = Quantity(deal.volume, sp),
-                last_px         = Price(deal.price, pp),
-                quote_currency  = instrument.quote_currency,
-                commission      = commission,
-                liquidity_side  = LiquiditySide.TAKER,
-                ts_event        = ts_event,
-                ts_init         = ts_init,
+                strategy_id,
+                InstrumentId(Symbol(symbol), MT5_VENUE),
+                client_order_id,
+                venue_order_id,
+                None,                        # venue_position_id
+                trade_id,
+                order_side,
+                OrderType.MARKET,
+                Quantity(deal.volume, sp),
+                Price(deal.price, pp),
+                instrument.quote_currency,
+                commission,
+                LiquiditySide.TAKER,
+                ts_event,
             )
             self._log.info(
                 f"MT5LiveExecutionClient: fill emitted — "
@@ -1022,6 +1054,18 @@ class MT5LiveExecutionClient(LiveExecutionClient):
 
         symbol_filter = instrument_id.symbol.value if instrument_id else None
 
+        # ================================================================
+        # FIXED: Get account currency once for all deals
+        # ================================================================
+        try:
+            account_info = mt5.account_info()
+            if account_info and hasattr(account_info, 'currency'):
+                account_currency = _parse_account_currency(account_info.currency)
+            else:
+                account_currency = USD
+        except Exception:
+            account_currency = USD
+
         for deal in deals:
             if deal.magic != self._config.magic_number:
                 continue
@@ -1037,18 +1081,24 @@ class MT5LiveExecutionClient(LiveExecutionClient):
 
             pp = instrument.price_precision
 
+            # Use account currency for commission (fixed)
+            commission_amount = abs(deal.commission or 0.0)
+            commission = Money(commission_amount, account_currency)
+
             report = FillReport(
-                client_order_id=client_order_id,
+                account_id=self.account_id,
+                instrument_id=iid,
                 venue_order_id=VenueOrderId(str(deal.order)),
                 trade_id=TradeId(str(deal.ticket)),
-                instrument_id=iid,
                 order_side=OrderSide.BUY if deal.type == mt5.DEAL_TYPE_BUY else OrderSide.SELL,
                 last_qty=Quantity(deal.volume, instrument.size_precision),
                 last_px=Price(deal.price, pp),
-                commission=Money(abs(deal.commission), _parse_account_currency(deal.currency)),
+                commission=commission,
                 liquidity_side=LiquiditySide.TAKER,
+                report_id=UUID4(),
                 ts_event=int(deal.time) * 1_000_000_000,
                 ts_init=self._clock.timestamp_ns(),
+                client_order_id=client_order_id,
             )
             reports.append(report)
 
@@ -1088,8 +1138,8 @@ class MT5LiveExecutionClient(LiveExecutionClient):
                 instrument_id=iid,
                 position_side=_order_side_to_position_side(side),
                 quantity=Quantity(pos.volume, instrument.size_precision),
+                report_id=UUID4(),
                 ts_last=int(pos.time) * 1_000_000_000,
-                report_id=None,
                 ts_init=self._clock.timestamp_ns(),
             )
             reports.append(report)
@@ -1242,26 +1292,22 @@ def _build_order_status_report(
     return OrderStatusReport(
         account_id=AccountId(f"MT5-{mt5_order.magic}"),
         instrument_id=instrument_id,
-        client_order_id=client_order_id,
         venue_order_id=venue_order_id or VenueOrderId(str(mt5_order.ticket)),
         order_side=side,
         order_type=order_type,
         time_in_force=TimeInForce.GTC,
         order_status=OrderStatus.ACCEPTED,
-        price=Price(mt5_order.price_open, 5) if mt5_order.price_open else None,
-        trigger_price=None,
-        trigger_type=TriggerType.NO_TRIGGER,
-        trailing_offset=None,
-        trailing_offset_type=TrailingOffsetType.NO_TRAILING_OFFSET,
         quantity=Quantity(mt5_order.volume_initial, 2),
         filled_qty=Quantity(mt5_order.volume_initial - mt5_order.volume_current, 2),
-        display_qty=None,
-        avg_px=None,
-        post_only=False,
-        reduce_only=False,
-        reject_reason=None,
-        report_id=None,
+        report_id=UUID4(),
         ts_accepted=int(mt5_order.time_setup) * 1_000_000_000,
         ts_last=int(mt5_order.time_setup) * 1_000_000_000,
         ts_init=ts_init,
+        client_order_id=client_order_id,
+        price=Price(mt5_order.price_open, 5) if mt5_order.price_open else None,
+        post_only=False,
+        reduce_only=False,
+        cancel_reason=None,
     )
+
+#fix

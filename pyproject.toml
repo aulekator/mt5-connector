@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mt5-connector"
-version = "0.2.0"
+version = "0.3.0"
 description = "NautilusTrader adapter for MetaTrader 5 — live trading and backtesting on any MT5 broker"
 readme = "README.md"
 license = { file = "LICENSE" }
