@@ -904,9 +904,9 @@ class MT5LiveExecutionClient(LiveExecutionClient):
         as separate entries, etc.) by checking deal.type is BUY or SELL.
 
         The ClientOrderId is recovered from our ticket→client_order_id map
-        if we placed the order this session. For orders placed in a previous
-        session (e.g. a pending order left overnight) we synthesise a
-        ClientOrderId from the MT5 order ticket so NT can still track it.
+        if we placed the order this session. Deals with no recoverable
+        ClientOrderId are skipped because Nautilus has no cached order to
+        apply the fill event to.
         """
         # Skip non-trade deal types (balance, credit, correction, etc.)
         if deal.type not in (mt5.DEAL_TYPE_BUY, mt5.DEAL_TYPE_SELL):
@@ -928,7 +928,7 @@ class MT5LiveExecutionClient(LiveExecutionClient):
         pp = instrument.price_precision
         sp = instrument.size_precision
 
-        # Recover or synthesise ClientOrderId
+        # Recover ClientOrderId for orders owned by this client session.
         client_order_id_str = self._ticket_to_client_order_id.get(deal.order)
         if client_order_id_str:
             client_order_id = ClientOrderId(client_order_id_str)
