@@ -86,6 +86,8 @@ def make_symbol_info(
 
 # Pre-built symbol infos for standard test symbols
 EURUSD_INFO  = make_symbol_info("EURUSD",  digits=5, currency_base="EUR",  currency_profit="USD")
+# Broker-suffixed fixture verifies lowercase suffixes are not uppercased away.
+EURUSDM_INFO = make_symbol_info("EURUSDm", digits=5, currency_base="EUR",  currency_profit="USD")
 GBPUSD_INFO  = make_symbol_info("GBPUSD",  digits=5, currency_base="GBP",  currency_profit="USD")
 XAUUSD_INFO  = make_symbol_info("XAUUSD",  digits=2, currency_base="XAU",  currency_profit="USD", trade_contract_size=100.0,  margin_initial=1.0)
 BTCUSD_INFO  = make_symbol_info("BTCUSD",  digits=2, currency_base="BTC",  currency_profit="USD", trade_contract_size=1.0,    margin_initial=1.0)
@@ -96,6 +98,8 @@ ALL_SYMBOLS_INFO = [EURUSD_INFO, GBPUSD_INFO, XAUUSD_INFO, BTCUSD_INFO, US500_IN
 # Map symbol name → info for mock lookup
 SYMBOL_INFO_MAP = {
     "EURUSD": EURUSD_INFO,
+    # The suffixed key must stay exact because mt5.symbol_info() is exact-name based.
+    "EURUSDm": EURUSDM_INFO,
     "GBPUSD": GBPUSD_INFO,
     "XAUUSD": XAUUSD_INFO,
     "BTCUSD": BTCUSD_INFO,
@@ -292,6 +296,34 @@ class TestLoadAllAsyncFilter:
 
         assert provider.count == 1
         assert "EURUSD" in provider.loaded_symbols
+
+    @pytest.mark.asyncio
+    async def test_filter_preserves_exact_suffixed_symbol(self, provider):
+        # Exact filter names should load the broker symbol with its original case.
+        with patch("mt5connect.providers.mt5") as mock_mt5:
+            mock_mt5.symbols_get.return_value   = [EURUSDM_INFO, EURUSD_INFO]
+            mock_mt5.symbol_select.return_value = True
+            mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
+            mock_mt5.last_error.return_value    = (0, "No error")
+
+            await provider.load_all_async(filters={"symbols": ["EURUSDm"]})
+
+        assert provider.count == 1
+        assert provider.loaded_symbols == ["EURUSDm"]
+
+    @pytest.mark.asyncio
+    async def test_filter_lowercase_matches_suffixed_symbol(self, provider):
+        # Lowercase filters remain supported through case-insensitive fallback.
+        with patch("mt5connect.providers.mt5") as mock_mt5:
+            mock_mt5.symbols_get.return_value   = [EURUSDM_INFO, GBPUSD_INFO]
+            mock_mt5.symbol_select.return_value = True
+            mock_mt5.symbol_info.side_effect    = lambda s: SYMBOL_INFO_MAP.get(s)
+            mock_mt5.last_error.return_value    = (0, "No error")
+
+            await provider.load_all_async(filters={"symbols": ["eurusdm"]})
+
+        assert provider.count == 1
+        assert provider.loaded_symbols == ["EURUSDm"]
 
     @pytest.mark.asyncio
     async def test_no_filter_loads_all(self, provider):
@@ -590,6 +622,17 @@ class TestLoadSymbol:
 
         assert "EURUSD" in provider.loaded_symbols
 
+    def test_load_suffixed_symbol_preserves_broker_case(self, provider):
+        # Direct symbol loading should store the parsed broker name unchanged.
+        with patch("mt5connect.providers.mt5") as mock_mt5:
+            mock_mt5.symbol_select.return_value = True
+            mock_mt5.symbol_info.return_value   = EURUSDM_INFO
+            mock_mt5.last_error.return_value    = (0, "No error")
+
+            provider.load_symbol("EURUSDm")
+
+        assert provider.loaded_symbols == ["EURUSDm"]
+
     def test_load_xauusd_returns_cfd(self, provider):
         with patch("mt5connect.providers.mt5") as mock_mt5:
             mock_mt5.symbol_select.return_value = True
@@ -729,6 +772,26 @@ class TestGetInstrument:
 
         assert provider.get_instrument("eurusd") is not None
         assert provider.get_instrument("EurUsd") is not None
+
+    def test_exact_suffixed_symbol_lookup(self, provider):
+        # Exact lookup should find the instrument without changing its symbol ID.
+        with patch("mt5connect.providers.mt5") as mock_mt5:
+            mock_mt5.symbol_select.return_value = True
+            mock_mt5.symbol_info.return_value   = EURUSDM_INFO
+            mock_mt5.last_error.return_value    = (0, "No error")
+            loaded = provider.load_symbol("EURUSDm")
+
+        assert provider.get_instrument("EURUSDm") is loaded
+
+    def test_lowercase_suffixed_symbol_lookup_fallback(self, provider):
+        # Lowercase lookup should still resolve to the exact loaded broker symbol.
+        with patch("mt5connect.providers.mt5") as mock_mt5:
+            mock_mt5.symbol_select.return_value = True
+            mock_mt5.symbol_info.return_value   = EURUSDM_INFO
+            mock_mt5.last_error.return_value    = (0, "No error")
+            loaded = provider.load_symbol("EURUSDm")
+
+        assert provider.get_instrument("eurusdm") is loaded
 
     def test_correct_type_returned(self, provider):
         with patch("mt5connect.providers.mt5") as mock_mt5:
