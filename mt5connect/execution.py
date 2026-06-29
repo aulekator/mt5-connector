@@ -79,14 +79,16 @@ from nautilus_trader.model.identifiers import (
     ClientId,
     ClientOrderId,
     InstrumentId,
+    StrategyId,
     Symbol,
     TradeId,
     VenueOrderId,
 )
+from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.model.objects import Money, Price, Quantity
 from nautilus_trader.model.currencies import USD
 
-from mt5connect.constants import MT5_MAGIC_NUMBER, MT5_VENUE
+from mt5connect.constants import MT5_MAGIC_NUMBER, MT5_VENUE, FILLING_MODE
 from mt5connect.errors import MT5ConnectionError, MT5OrderError
 
 if TYPE_CHECKING:
@@ -279,11 +281,7 @@ class MT5LiveExecutionClient(LiveExecutionClient):
           1. Verify connection
           2. Generate initial account state report
           3. Reconcile any open orders and positions
-          4. Seed _processed_deal_keys with all deals that already exist in
-             today's history so the first poll does not re-emit them as fills
-             (which would cause NT reconciliation WARN/ERROR noise because the
-             corresponding orders are not in NT's cache).
-          5. Start execution polling loop
+          4. Start execution polling loop
         """
         self._conn.ensure_connected()
 
@@ -293,10 +291,6 @@ class MT5LiveExecutionClient(LiveExecutionClient):
         # Reconcile existing open orders and positions at startup
         await self._reconcile_open_orders()
         await self._reconcile_open_positions()
-
-        # Seed deal history BEFORE the poll loop starts so pre-existing deals
-        # are never replayed through generate_order_filled.
-        await self._seed_processed_deals()
 
         # Start execution polling loop
         self._exec_poll_task = asyncio.get_event_loop().create_task(
@@ -378,68 +372,40 @@ class MT5LiveExecutionClient(LiveExecutionClient):
             action    = mt5.TRADE_ACTION_PENDING
             mt5_order_type = _nautilus_order_to_mt5_pending(order.order_type, order.side)
 
-        # ── Try different filling modes (for compatibility with Exness and other brokers) ──
-        # Some symbols (like XAUUSD on Exness) don't support ORDER_FILLING_IOC
-        filling_modes = [
-            mt5.ORDER_FILLING_IOC,      # Immediate or Cancel (preferred)
-            mt5.ORDER_FILLING_RETURN,   # Return (FOK equivalent)
-            mt5.ORDER_FILLING_FOK,      # Fill or Kill
-        ]
-        
-        last_error = None
-        result = None
-        
-        for fill_mode in filling_modes:
-            # Build request dict
-            request = {
-                "action":       action,
-                "symbol":       symbol,
-                "volume":       float(order.quantity),
-                "type":         mt5_order_type,
-                "price":        price,
-                "sl":           0.0,      # set below if order has sl
-                "tp":           0.0,      # set below if order has tp
-                "deviation":    20,       # max price deviation (points) for market orders
-                "magic":        self._config.magic_number,
-                "comment":      str(order.client_order_id),
-                "type_filling": fill_mode,
-                "type_time":    _time_in_force_to_mt5(order.time_in_force),
-            }
+        # Build request dict
+        request = {
+            "action":       action,
+            "symbol":       symbol,
+            "volume":       float(order.quantity),
+            "type":         mt5_order_type,
+            "price":        price,
+            "sl":           0.0,      # set below if order has sl
+            "tp":           0.0,      # set below if order has tp
+            "deviation":    20,       # max price deviation (points) for market orders
+            "magic":        self._config.magic_number,
+            "comment":      str(order.client_order_id),
+            "type_filling": FILLING_MODE,
+            "type_time":    _time_in_force_to_mt5(order.time_in_force),
+        }
 
-            if stoplimit_price:
-                request["stoplimit"] = stoplimit_price
+        if stoplimit_price:
+            request["stoplimit"] = stoplimit_price
 
-            # Attach SL/TP if the order carries them
-            if hasattr(order, "sl_trigger_price") and order.sl_trigger_price:
-                request["sl"] = float(order.sl_trigger_price)
-            if hasattr(order, "tp_price") and order.tp_price:
-                request["tp"] = float(order.tp_price)
+        # Attach SL/TP if the order carries them
+        if hasattr(order, "sl_trigger_price") and order.sl_trigger_price:
+            request["sl"] = float(order.sl_trigger_price)
+        if hasattr(order, "tp_price") and order.tp_price:
+            request["tp"] = float(order.tp_price)
 
-            # Send to MT5
-            result = mt5.order_send(request)
-            
-            if result is not None:
-                # Success
-                if result.retcode in (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_PLACED,
-                                       mt5.TRADE_RETCODE_DONE_PARTIAL, 10008):
-                    break
-                # Unsupported filling mode - try next one
-                if result.retcode == 10030:
-                    last_error = result
-                    continue
-                # Other error - stop trying
-                last_error = result
-                break
-            else:
-                last_error = None
-                code, msg = mt5.last_error()
-                self._log.error(f"order_send returned None: error {code}: {msg}")
-                self._generate_order_rejected(order, f"order_send returned None — error {code}: {msg}")
-                return
+        # ── Send to MT5 ───────────────────────────────────────────────────
 
-        # Check final result
+        result = mt5.order_send(request)
+
         if result is None:
-            self._generate_order_rejected(order, "order_send returned None")
+            code, msg = mt5.last_error()
+            self._generate_order_rejected(
+                order, f"mt5.order_send() returned None — error {code}: {msg}"
+            )
             return
 
         if result.retcode not in (mt5.TRADE_RETCODE_DONE, mt5.TRADE_RETCODE_PLACED,
@@ -546,24 +512,18 @@ class MT5LiveExecutionClient(LiveExecutionClient):
                 "deviation":    20,
                 "magic":        self._config.magic_number,
                 "comment":      f"close:{client_order_id_str}",
-                "type_filling": mt5.ORDER_FILLING_IOC,
+                "type_filling": FILLING_MODE,
             }
-            
-            # Try different filling modes for close as well
-            for fill_mode in [mt5.ORDER_FILLING_IOC, mt5.ORDER_FILLING_RETURN, mt5.ORDER_FILLING_FOK]:
-                request["type_filling"] = fill_mode
-                result = mt5.order_send(request)
-                if result is not None and result.retcode == mt5.TRADE_RETCODE_DONE:
-                    self._log.info(f"MT5LiveExecutionClient: position {ticket} closed")
-                    return
-                elif result is not None and result.retcode != 10030:
-                    break
-            
+            result = mt5.order_send(request)
             if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
                 code = result.retcode if result else -1
                 self._log.error(
                     f"MT5LiveExecutionClient: close failed for position {ticket} "
                     f"retcode={code}: {_mt5_retcode_to_str(code)}"
+                )
+            else:
+                self._log.info(
+                    f"MT5LiveExecutionClient: position {ticket} closed"
                 )
             return
 
@@ -718,43 +678,6 @@ class MT5LiveExecutionClient(LiveExecutionClient):
         self._log.info(
             f"MT5LiveExecutionClient: reconciled {len(self._known_position_tickets)} "
             f"open positions"
-        )
-
-    async def _seed_processed_deals(self) -> None:
-        """
-        Pre-populate _processed_deal_keys with every deal that already exists
-        in today's MT5 history at startup time.
-
-        This prevents the first execution poll from re-emitting fills for
-        trades that were placed in a previous session.  Without this, NT's
-        execution engine throws WARN/ERROR messages like:
-
-            Order with ClientOrderId('MT5-xxxx') not found in the cache to
-            apply OrderFilled(...)
-
-        because those orders were never registered with NT in this session.
-
-        We read exactly the same time window that _poll_exec_once uses
-        (UTC midnight → now) and add every qualifying deal key to the set.
-        No fills are emitted here — we only mark them as already-seen.
-        """
-        now     = datetime.now(timezone.utc)
-        from_dt = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
-
-        deals = mt5.history_deals_get(from_dt, now)
-        seeded = 0
-        if deals:
-            for deal in deals:
-                if deal.magic != self._config.magic_number:
-                    continue
-                deal_key = (deal.time, deal.ticket)
-                self._processed_deal_keys.add(deal_key)
-                self._last_deal_time = max(self._last_deal_time, deal.time)
-                seeded += 1
-
-        self._log.info(
-            f"MT5LiveExecutionClient: seeded {seeded} pre-existing deal(s) from "
-            f"today's history — they will not be re-emitted as fills"
         )
 
     # ── Execution polling loop ────────────────────────────────────────────────
@@ -933,17 +856,19 @@ class MT5LiveExecutionClient(LiveExecutionClient):
         if client_order_id_str:
             client_order_id = ClientOrderId(client_order_id_str)
         else:
-            # Order placed in a previous session or externally — NT has no record
-            # of this order, so pushing generate_order_filled would produce:
-            #   WARN  Order not found in cache to apply OrderFilled(...)
-            #   ERROR Cannot apply event to any order: ... not found in cache
-            # Skip it; _seed_processed_deals() should already have prevented us
-            # from reaching this branch for historical deals at startup.
-            self._log.debug(
-                f"MT5LiveExecutionClient: deal {deal.ticket} (order={deal.order}) "
-                "has no NT client_order_id — skipping fill emission for unowned order"
-            )
-            return
+            # Order placed in a previous session or externally; synthesise one
+            client_order_id = ClientOrderId(f"MT5-{deal.order}")
+
+        # Skip deals from previous sessions that have no order in the cache.
+        # NT reconciliation already handles the open position — emitting a fill
+        # for an unknown order just produces ERROR noise with no benefit.
+        if not self._ticket_to_client_order_id.get(deal.order):
+            if self._cache.order(client_order_id) is None:
+                self._log.debug(
+                    f"MT5LiveExecutionClient: skipping pre-session deal "
+                    f"ticket={deal.ticket} order={deal.order} — no cached order"
+                )
+                return
 
         venue_order_id = VenueOrderId(str(deal.order))
         trade_id       = TradeId(str(deal.ticket))
@@ -954,39 +879,50 @@ class MT5LiveExecutionClient(LiveExecutionClient):
             else OrderSide.SELL
         )
 
-        # Commission: MT5 stores as negative float, NT wants positive Money
+        # ================================================================
+        # FIXED: Get account currency safely for commission
+        # ================================================================
         try:
-            currency   = _parse_account_currency(deal.currency or "USD")
-            commission = Money(abs(deal.commission or 0.0), currency)
+            # Try to get currency from deal first
+            deal_currency = getattr(deal, 'currency', None)
+            if deal_currency:
+                currency = _parse_account_currency(deal_currency)
+            else:
+                # Fallback: get account info
+                account_info = mt5.account_info()
+                if account_info and hasattr(account_info, 'currency'):
+                    currency = _parse_account_currency(account_info.currency)
+                else:
+                    currency = USD
         except Exception:
-            commission = Money(0.0, USD)
+            currency = USD
+
+        commission = Money(abs(deal.commission or 0.0), currency)
 
         ts_event = int(deal.time) * 1_000_000_000   # seconds → nanoseconds
-        ts_init  = self._clock.timestamp_ns()
+
+        # Recover strategy_id from cache if order is known, else use EXTERNAL
+        strategy_id = StrategyId("EXTERNAL-001")
+        cached_order = self._cache.order(client_order_id)
+        if cached_order is not None:
+            strategy_id = cached_order.strategy_id
 
         try:
-            # generate_order_filled signature (NT current):
-            # (self, strategy_id, instrument_id, client_order_id, venue_order_id,
-            #  venue_position_id, trade_id, order_side, order_type, last_qty,
-            #  last_px, quote_currency, commission, liquidity_side, ts_event, info=None)
-            # Must be called positionally — kwargs not accepted by the Cython binding.
-            from nautilus_trader.model.identifiers import StrategyId
-            strategy_id = getattr(self, "_strategy_id", None) or StrategyId("UNSPECIFIED-000")
             self.generate_order_filled(
-                strategy_id,                                   # strategy_id
-                InstrumentId(Symbol(symbol), MT5_VENUE),       # instrument_id
-                client_order_id,                               # client_order_id
-                venue_order_id,                                # venue_order_id
-                None,                                          # venue_position_id
-                trade_id,                                      # trade_id
-                order_side,                                    # order_side
-                OrderType.MARKET,                              # order_type
-                Quantity(deal.volume, sp),                     # last_qty
-                Price(deal.price, pp),                         # last_px
-                instrument.quote_currency,                     # quote_currency
-                commission,                                    # commission
-                LiquiditySide.TAKER,                           # liquidity_side
-                ts_event,                                      # ts_event
+                strategy_id,
+                InstrumentId(Symbol(symbol), MT5_VENUE),
+                client_order_id,
+                venue_order_id,
+                None,                        # venue_position_id
+                trade_id,
+                order_side,
+                OrderType.MARKET,
+                Quantity(deal.volume, sp),
+                Price(deal.price, pp),
+                instrument.quote_currency,
+                commission,
+                LiquiditySide.TAKER,
+                ts_event,
             )
             self._log.info(
                 f"MT5LiveExecutionClient: fill emitted — "
@@ -1118,6 +1054,18 @@ class MT5LiveExecutionClient(LiveExecutionClient):
 
         symbol_filter = instrument_id.symbol.value if instrument_id else None
 
+        # ================================================================
+        # FIXED: Get account currency once for all deals
+        # ================================================================
+        try:
+            account_info = mt5.account_info()
+            if account_info and hasattr(account_info, 'currency'):
+                account_currency = _parse_account_currency(account_info.currency)
+            else:
+                account_currency = USD
+        except Exception:
+            account_currency = USD
+
         for deal in deals:
             if deal.magic != self._config.magic_number:
                 continue
@@ -1133,26 +1081,24 @@ class MT5LiveExecutionClient(LiveExecutionClient):
 
             pp = instrument.price_precision
 
-            # FillReport signature (NT current):
-            # (account_id, instrument_id, venue_order_id, trade_id, order_side,
-            #  last_qty, last_px, commission, liquidity_side, report_id: UUID4,
-            #  ts_event, ts_init, avg_px=None, client_order_id=None, venue_position_id=None)
-            from nautilus_trader.core.uuid import UUID4
+            # Use account currency for commission (fixed)
+            commission_amount = abs(deal.commission or 0.0)
+            commission = Money(commission_amount, account_currency)
+
             report = FillReport(
-                self.account_id,                                                              # account_id
-                iid,                                                                          # instrument_id
-                VenueOrderId(str(deal.order)),                                                # venue_order_id
-                TradeId(str(deal.ticket)),                                                    # trade_id
-                OrderSide.BUY if deal.type == mt5.DEAL_TYPE_BUY else OrderSide.SELL,         # order_side
-                Quantity(deal.volume, instrument.size_precision),                             # last_qty
-                Price(deal.price, pp),                                                        # last_px
-                Money(abs(deal.commission), _parse_account_currency(getattr(deal, 'currency', 'USD'))),  # commission
-                LiquiditySide.TAKER,                                                          # liquidity_side
-                UUID4(),                                                                      # report_id (must be UUID4, not None)
-                int(deal.time) * 1_000_000_000,                                               # ts_event
-                self._clock.timestamp_ns(),                                                   # ts_init
-                None,                                                                         # avg_px
-                client_order_id,                                                              # client_order_id
+                account_id=self.account_id,
+                instrument_id=iid,
+                venue_order_id=VenueOrderId(str(deal.order)),
+                trade_id=TradeId(str(deal.ticket)),
+                order_side=OrderSide.BUY if deal.type == mt5.DEAL_TYPE_BUY else OrderSide.SELL,
+                last_qty=Quantity(deal.volume, instrument.size_precision),
+                last_px=Price(deal.price, pp),
+                commission=commission,
+                liquidity_side=LiquiditySide.TAKER,
+                report_id=UUID4(),
+                ts_event=int(deal.time) * 1_000_000_000,
+                ts_init=self._clock.timestamp_ns(),
+                client_order_id=client_order_id,
             )
             reports.append(report)
 
@@ -1192,8 +1138,8 @@ class MT5LiveExecutionClient(LiveExecutionClient):
                 instrument_id=iid,
                 position_side=_order_side_to_position_side(side),
                 quantity=Quantity(pos.volume, instrument.size_precision),
+                report_id=UUID4(),
                 ts_last=int(pos.time) * 1_000_000_000,
-                report_id=None,
                 ts_init=self._clock.timestamp_ns(),
             )
             reports.append(report)
@@ -1346,26 +1292,22 @@ def _build_order_status_report(
     return OrderStatusReport(
         account_id=AccountId(f"MT5-{mt5_order.magic}"),
         instrument_id=instrument_id,
-        client_order_id=client_order_id,
         venue_order_id=venue_order_id or VenueOrderId(str(mt5_order.ticket)),
         order_side=side,
         order_type=order_type,
         time_in_force=TimeInForce.GTC,
         order_status=OrderStatus.ACCEPTED,
-        price=Price(mt5_order.price_open, 5) if mt5_order.price_open else None,
-        trigger_price=None,
-        trigger_type=TriggerType.NO_TRIGGER,
-        trailing_offset=None,
-        trailing_offset_type=TrailingOffsetType.NO_TRAILING_OFFSET,
         quantity=Quantity(mt5_order.volume_initial, 2),
         filled_qty=Quantity(mt5_order.volume_initial - mt5_order.volume_current, 2),
-        display_qty=None,
-        avg_px=None,
-        post_only=False,
-        reduce_only=False,
-        reject_reason=None,
-        report_id=None,
+        report_id=UUID4(),
         ts_accepted=int(mt5_order.time_setup) * 1_000_000_000,
         ts_last=int(mt5_order.time_setup) * 1_000_000_000,
         ts_init=ts_init,
+        client_order_id=client_order_id,
+        price=Price(mt5_order.price_open, 5) if mt5_order.price_open else None,
+        post_only=False,
+        reduce_only=False,
+        cancel_reason=None,
     )
+
+#fix
