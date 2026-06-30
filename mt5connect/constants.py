@@ -43,11 +43,13 @@ RECONNECT_MAX_ATTEMPTS: int      = 20
 
 # ─────────────────────────────────────────────────────────────────────────────
 # MT5 ORDER FILLING MODES
+#
+# NOTE: There is no single correct filling mode — it depends on the broker
+# AND the account type (Raw Spread, Pro, Standard, Zero all differ).
+# The correct mode is auto-detected per-symbol at runtime in execution.py
+# via _get_filling_mode(), which reads symbol_info().filling_mode.
+# No fixed constant is defined here on purpose.
 # ─────────────────────────────────────────────────────────────────────────────
-
-import MetaTrader5 as mt5  # noqa: E402
-
-FILLING_MODE = mt5.ORDER_FILLING_IOC
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -203,3 +205,5 @@ PRICE_PRECISION_OVERRIDES: dict[str, int] = {
     "AU200":  1,
     "HK50":   0,
 }
+
+#fix

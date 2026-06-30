@@ -88,7 +88,7 @@ from nautilus_trader.core.uuid import UUID4
 from nautilus_trader.model.objects import Money, Price, Quantity
 from nautilus_trader.model.currencies import USD
 
-from mt5connect.constants import MT5_MAGIC_NUMBER, MT5_VENUE, FILLING_MODE
+from mt5connect.constants import MT5_MAGIC_NUMBER, MT5_VENUE
 from mt5connect.errors import MT5ConnectionError, MT5OrderError
 
 if TYPE_CHECKING:
@@ -97,6 +97,44 @@ if TYPE_CHECKING:
     from mt5connect.providers import MT5InstrumentProvider
 
 logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FILLING MODE AUTO-DETECT
+#
+# Different brokers and account types support different MT5 order filling
+# modes. Sending the wrong one causes retcode=10030 "Invalid type of order
+# filling". This function reads the symbol's actual supported filling modes
+# at runtime and picks the correct one — works across Raw Spread, Pro,
+# Standard, and Zero account types without any manual configuration.
+#
+#   symbol_info().filling_mode bitmask:
+#     bit 0 (1) = ORDER_FILLING_FOK    supported
+#     bit 1 (2) = ORDER_FILLING_IOC    supported
+#     bit 2 (4) = ORDER_FILLING_RETURN supported
+#
+#   Priority: IOC > FOK > RETURN
+#   IOC works on Raw Spread, Pro, and Standard Exness accounts (the most
+#   common case). FOK is used as fallback for Zero accounts that only
+#   support FOK. RETURN is the last resort for brokers that only allow it.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _get_filling_mode(symbol: str) -> int:
+    """Auto-detect the correct MT5 order filling mode for a symbol."""
+    info = mt5.symbol_info(symbol)
+    if info is None:
+        return mt5.ORDER_FILLING_FOK  # safe fallback if symbol info unavailable
+
+    bitmask = info.filling_mode
+
+    if bitmask & 2:    # IOC supported
+        return mt5.ORDER_FILLING_IOC
+    elif bitmask & 1:  # FOK supported
+        return mt5.ORDER_FILLING_FOK
+    elif bitmask & 4:  # RETURN supported
+        return mt5.ORDER_FILLING_RETURN
+    else:
+        return mt5.ORDER_FILLING_FOK  # absolute fallback
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -372,6 +410,9 @@ class MT5LiveExecutionClient(LiveExecutionClient):
             action    = mt5.TRADE_ACTION_PENDING
             mt5_order_type = _nautilus_order_to_mt5_pending(order.order_type, order.side)
 
+        # Auto-detect the correct filling mode for this symbol/account type
+        filling_mode = _get_filling_mode(symbol)
+
         # Build request dict
         request = {
             "action":       action,
@@ -384,7 +425,7 @@ class MT5LiveExecutionClient(LiveExecutionClient):
             "deviation":    20,       # max price deviation (points) for market orders
             "magic":        self._config.magic_number,
             "comment":      str(order.client_order_id),
-            "type_filling": FILLING_MODE,
+            "type_filling": filling_mode,
             "type_time":    _time_in_force_to_mt5(order.time_in_force),
         }
 
@@ -502,6 +543,9 @@ class MT5LiveExecutionClient(LiveExecutionClient):
                 close_type  = mt5.ORDER_TYPE_BUY
                 close_price = tick.ask
 
+            # Auto-detect the correct filling mode for this symbol/account type
+            filling_mode = _get_filling_mode(symbol)
+
             request = {
                 "action":       mt5.TRADE_ACTION_DEAL,
                 "symbol":       symbol,
@@ -512,7 +556,7 @@ class MT5LiveExecutionClient(LiveExecutionClient):
                 "deviation":    20,
                 "magic":        self._config.magic_number,
                 "comment":      f"close:{client_order_id_str}",
-                "type_filling": FILLING_MODE,
+                "type_filling": filling_mode,
             }
             result = mt5.order_send(request)
             if result is None or result.retcode != mt5.TRADE_RETCODE_DONE:
@@ -1310,4 +1354,4 @@ def _build_order_status_report(
         cancel_reason=None,
     )
 
-#fix
+#fix2
