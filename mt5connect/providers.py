@@ -262,11 +262,15 @@ class MT5InstrumentProvider(InstrumentProvider):
         Parameters
         ----------
         symbol : str
-            Symbol name (e.g. "EURUSD"). Case-insensitive.
+            Symbol name (e.g. "EURUSD", "XAUUSDm"). Exact broker casing
+            is preserved — do NOT uppercase. Brokers like Exness use
+            lowercase suffixes (e.g. "XAUUSDm"), and instruments are
+            registered under that exact casing in load_symbol(), so
+            uppercasing here would break the lookup for those symbols.
         """
         from mt5connect.constants import MT5_VENUE
         instrument_id = InstrumentId(
-            Symbol(symbol.upper().strip()),
+            Symbol(symbol.strip()),
             MT5_VENUE,
         )
         return self.find(instrument_id)
