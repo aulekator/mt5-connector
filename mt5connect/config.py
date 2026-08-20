@@ -6,6 +6,7 @@ This is the only file users need to touch to connect their broker.
 """
 
 from dataclasses import dataclass
+from mt5connect.backend import derive_ws_url
 from mt5connect.constants import (
     DEFAULT_POLL_INTERVAL_MS,
     DEFAULT_EXEC_POLL_INTERVAL_MS,
@@ -14,6 +15,7 @@ from mt5connect.constants import (
     RECONNECT_MAX_ATTEMPTS,
     MT5_MAGIC_NUMBER,
 )
+from mt5connect.errors import MT5ConfigError
 
 
 @dataclass
@@ -109,6 +111,10 @@ class MT5Config:
     reconnect_max_attempts: int   = RECONNECT_MAX_ATTEMPTS
     timeout_s: float              = 10.0
 
+    backend: str                  = "local"
+    server_url: str | None        = None
+    ws_url: str | None            = None
+
     def __post_init__(self) -> None:
         if not self.account or self.account <= 0:
             raise ValueError("MT5Config.account must be a positive integer.")
@@ -128,6 +134,14 @@ class MT5Config:
             raise ValueError("poll_interval_ms must be at least 10ms.")
         if self.exec_poll_interval_ms < 50:
             raise ValueError("exec_poll_interval_ms must be at least 50ms.")
+
+        if self.backend not in ("local", "remote"):
+            raise MT5ConfigError(
+                f"backend must be 'local' or 'remote', got {self.backend!r}")
+        if self.backend == "remote" and not self.server_url:
+            raise MT5ConfigError("backend='remote' requires server_url (e.g. http://host:5000)")
+        if self.ws_url is None and self.server_url:
+            self.ws_url = derive_ws_url(self.server_url)
 
     @property
     def poll_interval_s(self) -> float:

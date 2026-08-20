@@ -447,11 +447,19 @@ def parse_quote_tick(symbol_info_tick, instrument: InstrumentAny) -> QuoteTick:
         bid  = float(symbol_info_tick["bid"])
         ask  = float(symbol_info_tick["ask"])
         ts_s = int(symbol_info_tick["time"])
+        if "time_msc" in symbol_info_tick:
+          ts_event = symbol_info_tick["time_msc"] * 1000 * 1000 # /mili  seconds to nano seconds
+        else: 
+          ts_event = ts_s * 1_000_000_000
     else:
         # namedtuple (live polling) or MagicMock (tests) — use attribute access
         bid  = float(symbol_info_tick.bid)
         ask  = float(symbol_info_tick.ask)
         ts_s = int(symbol_info_tick.time)
+        if hasattr(symbol_info_tick, "time_msc"):
+          ts_event = int(symbol_info_tick.time_msc) * 1000 * 1000
+        else:
+          ts_event = ts_s * 1_000_000_000
 
     return QuoteTick(
         instrument_id=instrument.id,
@@ -459,7 +467,7 @@ def parse_quote_tick(symbol_info_tick, instrument: InstrumentAny) -> QuoteTick:
         ask_price=Price(ask, pp),
         bid_size=Quantity(1_000_000, 0),   # MT5 doesn't expose depth
         ask_size=Quantity(1_000_000, 0),
-        ts_event=ts_s * 1_000_000_000,     # seconds → nanoseconds
+        ts_event=ts_event,
         ts_init=time.time_ns(),
     )
 

@@ -47,7 +47,10 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-import MetaTrader5 as mt5
+try:
+    import MetaTrader5 as mt5
+except ImportError:  # pragma: no cover - Windows-only dependency
+    mt5 = None  # bound to the real backend by mt5connect.backend.set_backend()
 
 from nautilus_trader.cache.cache import Cache
 from nautilus_trader.common.component import LiveClock, MessageBus

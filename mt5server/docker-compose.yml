@@ -1,0 +1,17 @@
+services:
+  mt5server:
+    build:
+      dockerfile: Dockerfile
+    environment:
+      - MT5_API_PORT=5000
+      - WS_PORT=9000
+      - MT5_WS_URL=${MT5_WS_URL:-ws://127.0.0.1:9000}
+      - MT5_SYMBOLS=${MT5_SYMBOLS}
+      - MT5_SERVER=${MT5_SERVER}
+      - MT5_PASSWORD=${MT5_PASSWORD}
+      - MT5_ACCOUNT=${MT5_ACCOUNT}
+    ports:
+      - 127.0.0.1:5000:5000
+      - 127.0.0.1:9000:9000
+      - 127.0.0.1:3001:3001
+    restart: unless-stopped

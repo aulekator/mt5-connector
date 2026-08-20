@@ -1,0 +1,60 @@
+[
+    {
+        "directory": "/home/jck/git/sesto-dev/metatrader5-quant-server-python/backend/mt5",
+        "arguments": [
+            "clang++",
+            "-xc++",
+            "-std=c++17",
+            "-D__MQL__",
+            "-D__MQL5__",
+            "-include/home/jck/.vscode/extensions/ngsoftware.mql-clangd-1.1.63/files/mql_clangd_compat.h",
+            "-include/home/jck/git/sesto-dev/metatrader5-quant-server-python/backend/mt5/.mql-auto-forwards/ea.eb912a50.auto.mqh",
+            "-fms-extensions",
+            "-fms-compatibility",
+            "-ferror-limit=0",
+            "-Wno-invalid-token-paste",
+            "-Wno-unused-value",
+            "-Wno-unknown-pragmas",
+            "-Wno-writable-strings",
+            "-Xclang",
+            "-Wno-invalid-pp-directive",
+            "-Wno-unknown-directives",
+            "-Wno-language-extension-token",
+            "-I/home/jck/git/sesto-dev/metatrader5-quant-server-python/backend/mt5",
+            "-I/home/jck/git/sesto-dev/metatrader5-quant-server-python/backend/mt5/Include",
+            "-D__MQL5_BUILD__",
+            "-c",
+            "/home/jck/git/sesto-dev/metatrader5-quant-server-python/backend/mt5/ea_MQL5/ea.mq5"
+        ],
+        "file": "/home/jck/git/sesto-dev/metatrader5-quant-server-python/backend/mt5/ea_MQL5/ea.mq5"
+    },
+    {
+        "directory": "/home/jck/git/sesto-dev/metatrader5-quant-server-python/backend/mt5",
+        "arguments": [
+            "clang++",
+            "-xc++-header",
+            "-std=c++17",
+            "-D__MQL__",
+            "-D__MQL5__",
+            "-include/home/jck/.vscode/extensions/ngsoftware.mql-clangd-1.1.63/files/mql_clangd_compat.h",
+            "-include/home/jck/git/sesto-dev/metatrader5-quant-server-python/backend/mt5/.mql-auto-forwards/ea.eb912a50.auto.mqh",
+            "-fms-extensions",
+            "-fms-compatibility",
+            "-ferror-limit=0",
+            "-Wno-invalid-token-paste",
+            "-Wno-unused-value",
+            "-Wno-unknown-pragmas",
+            "-Wno-writable-strings",
+            "-Xclang",
+            "-Wno-invalid-pp-directive",
+            "-Wno-unknown-directives",
+            "-Wno-language-extension-token",
+            "-I/home/jck/git/sesto-dev/metatrader5-quant-server-python/backend/mt5",
+            "-I/home/jck/git/sesto-dev/metatrader5-quant-server-python/backend/mt5/Include",
+            "-D__MQL5_BUILD__",
+            "-c",
+            "/home/jck/git/sesto-dev/metatrader5-quant-server-python/backend/mt5/ea_MQL5/WebSocketService.mqh"
+        ],
+        "file": "/home/jck/git/sesto-dev/metatrader5-quant-server-python/backend/mt5/ea_MQL5/WebSocketService.mqh"
+    }
+]

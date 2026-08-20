@@ -7,7 +7,10 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING
 
-import MetaTrader5 as mt5
+try:
+    import MetaTrader5 as mt5
+except ImportError:  # pragma: no cover - Windows-only dependency
+    mt5 = None  # bound to the real backend by mt5connect.backend.set_backend()
 
 from mt5connect.errors import MT5ConnectionError, MT5LoginError
 

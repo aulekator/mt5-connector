@@ -1,0 +1,16 @@
+.devcontainer
+.git
+docker-compose.yaml
+README.md
+LICENSE.md
+.gitignore
+.env.example
+.env
+config
+mt5ticks/.cache
+mt5ticks/.clangd
+mt5ticks/.clang-format
+mt5ticks/.vscode
+mt5ticks/.mql-auto-forwards
+mt5ticks/compile_commands.json
+mt5ticks/**/ticks.ex5

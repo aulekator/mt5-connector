@@ -11,7 +11,10 @@ import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-import MetaTrader5 as mt5
+try:
+    import MetaTrader5 as mt5
+except ImportError:  # pragma: no cover - Windows-only dependency
+    mt5 = None  # bound to the real backend by mt5connect.backend.set_backend()
 
 from nautilus_trader.cache.cache import Cache
 from nautilus_trader.common.component import LiveClock, MessageBus
@@ -28,7 +31,7 @@ from nautilus_trader.data.messages import (
 )
 from nautilus_trader.live.data_client import LiveMarketDataClient
 from nautilus_trader.model.data import Bar, QuoteTick
-from nautilus_trader.model.identifiers import ClientId, InstrumentId
+from nautilus_trader.model.identifiers import ClientId, InstrumentId, Symbol
 
 from mt5connect.constants import MT5_VENUE
 from mt5connect.errors import MT5ConnectionError
@@ -72,6 +75,7 @@ class MT5DataClient(LiveMarketDataClient):
         self._subscribed_symbols: set[str] = set()
         self._subscribed_bar_types: set[str] = set()
         self._poll_task: asyncio.Task | None = None
+        self._ws: "WSStreamClient | None" = None
         self._last_tick_time: dict[str, int] = {}
         self._is_connected = False
         self._pending_subscriptions: set[str] = set()
@@ -98,17 +102,52 @@ class MT5DataClient(LiveMarketDataClient):
                 self._subscribed_symbols.add(symbol)
             self._pending_subscriptions.discard(symbol)
 
-        self._poll_task = asyncio.get_event_loop().create_task(
-            self._poll_loop(),
-            name="MT5DataClient._poll_loop",
+        if self._config.backend == "remote":
+            await self._start_ws_stream()
+        else:
+            self._poll_task = asyncio.get_event_loop().create_task(
+                self._poll_loop(),
+                name="MT5DataClient._poll_loop",
+            )
+            self._log.info(
+                f"MT5DataClient: connected — polling every {self._config.poll_interval_ms}ms "
+                f"for {len(self._config.symbols)} symbols"
+            )
+
+    async def _start_ws_stream(self) -> None:
+        from mt5connect.ws_stream import WSStreamClient
+
+        self._ws = WSStreamClient(
+            url=self._config.ws_url,
+            message_handler=self._ws_on_message,
+            initial_delay_s=self._config.reconnect_initial_delay_s,
+            max_delay_s=self._config.reconnect_max_delay_s,
         )
-        self._log.info(
-            f"MT5DataClient: connected — polling every {self._config.poll_interval_ms}ms "
-            f"for {len(self._config.symbols)} symbols"
-        )
+        await self._ws.start()
+        self._log.info(f"MT5DataClient: connected — WS stream to {self._config.ws_url}")
+
+    def _ws_on_message(self, payload: dict) -> None:
+        if not ("symbol" in payload and ("bid" in payload or "ask" in payload)):
+            return
+        symbol = payload.get("symbol")
+        if symbol not in self._subscribed_symbols:
+            self._log.debug(f"MT5DataClient: ignoring tick for unsubscribed {symbol}")
+            return
+        instrument = self._provider.get_instrument(symbol)
+        if instrument is None:
+            self._log.debug(f"MT5DataClient: ignoring tick for unknown {symbol}")
+            return
+        from mt5connect.remote_mt5 import tick_from_ws
+
+        tick = tick_from_ws(payload)
+        quote = parse_quote_tick(tick, instrument)
+        self._handle_data(quote)
 
     async def _disconnect(self) -> None:
         self._is_connected = False
+        if self._ws is not None:
+            await self._ws.stop()
+            self._ws = None
         if self._poll_task and not self._poll_task.done():
             self._poll_task.cancel()
             await self._poll_task
@@ -130,12 +169,16 @@ class MT5DataClient(LiveMarketDataClient):
         self._subscribed_symbols.add(symbol)
         self._log.debug(f"MT5DataClient: subscribed ticks → {symbol}")
 
+        await self._push_subscribe_state()
+
     async def _unsubscribe_quote_ticks(self, command: UnsubscribeQuoteTicks) -> None:
         symbol = command.instrument_id.symbol.value
         self._subscribed_symbols.discard(symbol)
         self._last_tick_time.pop(symbol, None)
         self._pending_subscriptions.discard(symbol)
         self._log.debug(f"MT5DataClient: unsubscribed ticks → {symbol}")
+
+        await self._push_subscribe_state()
 
     async def _subscribe_bars(self, command: SubscribeBars) -> None:
         bar_type_str = str(command.bar_type)
@@ -155,6 +198,8 @@ class MT5DataClient(LiveMarketDataClient):
 
         self._log.debug(f"MT5DataClient: subscribed bars → {bar_type_str}")
 
+        await self._push_subscribe_state()
+
     async def _unsubscribe_bars(self, command: UnsubscribeBars) -> None:
         bar_type_str = str(command.bar_type)
         self._subscribed_bar_types.discard(bar_type_str)
@@ -173,6 +218,15 @@ class MT5DataClient(LiveMarketDataClient):
             )
 
         self._log.debug(f"MT5DataClient: unsubscribed bars → {bar_type_str}")
+
+        await self._push_subscribe_state()
+
+    async def _push_subscribe_state(self) -> None:
+        if self._config.backend == "remote" and self._ws is not None:
+            await self._ws.send({
+                "type": "subscribe",
+                "symbols": sorted(self._subscribed_symbols),
+            })
 
     async def _subscribe(self, command: SubscribeData) -> None:
         pass
@@ -384,9 +438,9 @@ class MT5DataClient(LiveMarketDataClient):
 
             self._handle_data(tick)
 
-    def subscribed_quote_ticks(self) -> tuple[str, ...]:
+    def subscribed_quote_ticks(self) -> list[InstrumentId]:
         """Currently subscribed symbols."""
-        return tuple(sorted(self._subscribed_symbols))
+        return [InstrumentId(Symbol(s), MT5_VENUE) for s in sorted(self._subscribed_symbols)]
 
     @property
     def is_polling(self) -> bool:

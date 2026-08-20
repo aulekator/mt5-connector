@@ -55,7 +55,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
-import MetaTrader5 as mt5
+try:
+    import MetaTrader5 as mt5
+except ImportError:  # pragma: no cover - Windows-only dependency
+    mt5 = None  # bound to the real backend by mt5connect.backend.set_backend()
 import numpy as np
 
 from nautilus_trader.model.data import Bar, QuoteTick

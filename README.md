@@ -38,17 +38,34 @@ MT5 Terminal (Windows) ←→ mt5-connector ←→ NautilusTrader
 
 ## Table of contents
 
-- [Requirements](#requirements)
-- [Installation](#installation)
-- [Quick start](#quick-start)
-- [Configuration](#configuration)
-- [Writing a strategy](#writing-a-strategy)
-- [Backtesting](#backtesting)
-- [Live trading](#live-trading)
-- [Running the full test suite](#running-the-full-test-suite)
-- [Project structure](#project-structure)
-- [Broker compatibility](#broker-compatibility)
-- [Troubleshooting](#troubleshooting)
+- [mt5-connector](#mt5-connector)
+  - [What this is](#what-this-is)
+  - [Table of contents](#table-of-contents)
+  - [Requirements](#requirements)
+  - [Installation](#installation)
+  - [Quick start](#quick-start)
+  - [Configuration](#configuration)
+    - [Symbol naming](#symbol-naming)
+  - [Writing a strategy](#writing-a-strategy)
+  - [Backtesting](#backtesting)
+    - [Step 1 — download historical data](#step-1--download-historical-data)
+    - [Step 2 — run the backtest](#step-2--run-the-backtest)
+  - [Live trading](#live-trading)
+    - [Bar types for live trading](#bar-types-for-live-trading)
+  - [Dockerized server backend](#dockerized-server-backend)
+    - [What it is](#what-it-is)
+    - [Improtant Security Notice](#improtant-security-notice)
+    - [Requirements](#requirements-1)
+      - [Quick start](#quick-start-1)
+    - [Persistence](#persistence)
+  - [Running the full test suite](#running-the-full-test-suite)
+  - [Project structure](#project-structure)
+  - [Broker compatibility](#broker-compatibility)
+  - [Troubleshooting](#troubleshooting)
+  - [Safety notes](#safety-notes)
+  - [Changelog](#changelog)
+    - [0.1.0 (2026-06-12)](#010-2026-06-12)
+  - [License](#license)
 
 ---
 
@@ -513,6 +530,138 @@ Common examples:
 "EURUSDm.MT5-100-TICK-LAST-INTERNAL"    # 100-tick bars
 "EURUSDm.MT5-1000-VOLUME-LAST-INTERNAL" # volume bars
 ```
+
+---
+
+## Dockerized server backend
+
+The adapter can run against a **Dockerized MT5 server** instead of a local
+MetaTrader terminal. The server container runs MT5 under Wine, exposes a
+Flask REST API (`mt5server/app`) plus a WebSocket tick hub, and runs a
+small MQL5 EA that publishes live ticks. The adapter then works on any
+machine — including Linux — by selecting `backend="remote"`.
+
+```
+┌─ your bot (any OS) ────────────────┐      ┌─ MT5 server container ────────┐
+│  mt5-connector (backend="remote")  │      │  Flask REST  :5000             │
+│   └─ WSStreamClient                │──────│  WS tick hub :9000             │
+│      (subscribe/tick messages)     │      │  MT5 terminal (Wine)           │
+└────────────────────────────────────┘      └────────────────────────────────┘
+```
+
+### What it is
+
+- A `backend="remote"` mode on `MT5Config` plus a `server_url` (HTTP) and a
+  derived `ws_url` (WebSocket) — see `mt5connect/config.py`.
+- The Docker image builds MT5 + Wine + the Flask API + the WS hub in one
+  container (`mt5server/Dockerfile`), with the EA provisioned automatically.
+- `set_backend(config)` binds the HTTP/WS client (`mt5connect/remote_mt5.py`,
+  `mt5connect/ws_stream.py`) into the adapter, replacing the local
+  `MetaTrader5` package — no Windows-only dependency needed.
+
+### Improtant Security Notice
+
+There is no authentication in the dockerized backend. It is intended to be used on the
+same machine only for now. Never expose ports to an insecure network. 
+
+### Requirements
+
+- Docker on the host.
+
+#### Quick start
+
+***1 . Build and start Container***
+
+With docker compose: 
+
+```bash
+# 0. create an environment file 
+cp .env.example .env   # set MT5_ACCOUNT / MT5_PASSWORD / MT5_SERVER
+
+# 1. Build + start the server (context is the repo root, so mt5ticks/ is copied)
+source .env
+# environment variables need to be exported in order to be picked up by docker compose
+export MT5_ACCOUNT
+export MT5_PASSWORD
+export MT5_SERVER
+export MT5_SYMBOLS
+cd mt5server && docker compose up --build -d
+``` 
+
+Without docker compose
+
+Without docker-compose, build/run directly:
+
+```bash
+cd mt5server 
+docker build -t mt5-server .
+source ../.env
+docker run -d --name mt5-server \
+  -p 127.0.0.1:5000:5000 -p 127.0.0.1:9000:9000 -p 127.0.0.1:3001:3001 \
+  -e MT5_SYMBOLS="${MT5_SYMBOLS}" \
+  -e MT5_SERVER="${MT5_SERVER}" \
+  -e MT5_PASSWORD="${MT5_PASSWORD}" \
+  -e MT5_ACCOUNT="${MT5_ACCOUNT}" \
+  mt5-server
+```
+
+***2. Wait until container is up***
+
+```bash
+
+# 2. Metatrader 5 ist installed and started in a docker container. Give it 1-2 minutes to start
+# if you want to track the installation progress run:
+docker exec -it  mt5server-mt5server-1 tail -f /var/log/mt5_setup.log
+
+# if you need to see the metatrader ui open https://localhost:3001 in a browser
+```
+
+***3. Run remote backend example***
+```bash
+# 3. in a new terminal
+source .env
+source .venv/bin/activate
+python examples/live_remote.py
+```
+If everythng works correctly you shoud see ticks streming in after a few seconds like this:
+
+```
+2026-08-19T12:20:07.454036271Z [INFO] TRADER-001.Portfolio: Updated AccountState(account_id=MT5-917132, account_type=MARGIN, base_currency=None, is_reported=True, balances=[AccountBalance(total=9_999.93 USD, locked=0.00 USD, free=9_999.93 USD)], margins=[], event_id=c24fbca4-15bb-4105-9eaa-4ebaa3bfb873)
+2026-08-19T12:20:07.613214977Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.34 ask=4368.46 @ 1787152807592000000
+2026-08-19T12:20:07.633962622Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.37 ask=4368.49 @ 1787152807612000000
+2026-08-19T12:20:07.685732285Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.37 ask=4368.47 @ 1787152807664000000
+2026-08-19T12:20:07.697749223Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.25 ask=4368.37 @ 1787152807675000000
+2026-08-19T12:20:07.710776389Z [INFO] TRADER-001.TickPrintStrategy: EURUSDp.MT5 bid=1.16074 ask=1.16075 @ 1787152807684000000
+2026-08-19T12:20:07.725422727Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.34 ask=4368.46 @ 1787152807704000000
+2026-08-19T12:20:07.732231519Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.34 ask=4368.43 @ 1787152807713000000
+2026-08-19T12:20:07.746709404Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.31 ask=4368.43 @ 1787152807723000000
+2026-08-19T12:20:07.767988612Z [INFO] TRADER-001.TickPrintStrategy: EURUSDp.MT5 bid=1.16075 ask=1.16076 @ 1787152807745000000
+
+```
+
+
+**Tick streaming setup**
+
+Ticks streamking is set up automatically for every symbol in the environment
+variable  `MT5_SYMBOLS`.
+
+**Security note**
+
+For now the server *does not provide any authentication and authorization*. That means it should be only used  locally
+and never be exposed over an insecure network, as this will *expose the api and your account* to every one who has access
+to the network. On public machines this is the whole internet. 
+
+Account credentials live only in your local gitignored `.env`. They are only passed to the container via environment 
+variables and used during setup. They are also forwarded to the server at runtime via `POST /login` .
+They  and are never baked into the Docker image. The server's `config/` directory (Wine prefix) is a mounted
+volume owned by the container.
+
+### Persistence
+
+The dockerized metatrader instance is configured at startup automatically and not intended to be used via the regular matatrader GUI.
+Therefor it has no volumes for persisting configuration configured. If you need to persist data between container instances, you need
+to mount a volume to the containers `/config` path. For example by additonally passing `-v $PWD/config:/config` to the docker command
+line, or change the `docker-compose.yaml` file accordingly. 
 
 ---
 

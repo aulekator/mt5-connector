@@ -38,8 +38,9 @@ classifiers = [
 ]
 dependencies = [
     "nautilus_trader>=1.190.0",
-    "MetaTrader5>=5.0.45",
+    "MetaTrader5>=5.0.45 ; platform_system == \"Windows\"",
     "python-dotenv>=1.0",
+    "websockets>=17.0.1",
 ]
 
 [project.optional-dependencies]
@@ -57,6 +58,9 @@ Changelog  = "https://github.com/aulekator/mt5-connector/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["mt5connect"]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -8,6 +8,10 @@ class MT5Error(Exception):
     """Base exception for all nautilus-mt5 errors."""
 
 
+class MT5ConfigError(MT5Error):
+    """Raised when MT5Config is invalid (e.g. remote backend without server_url)."""
+
+
 class MT5ConnectionError(MT5Error):
     """
     Raised when the adapter cannot establish or maintain
