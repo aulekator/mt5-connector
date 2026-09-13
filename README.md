@@ -7,14 +7,16 @@
 [![PyPI version](https://badge.fury.io/py/mt5-connector.svg)](https://badge.fury.io/py/mt5-connector)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](https://www.microsoft.com/windows)
+[![Platform: Windows | Linux](https://img.shields.io/badge/platform-Windows%20%7C%20Linux-lightgrey.svg)](#linux--docker-remote-backend)
 [![Unofficial](https://img.shields.io/badge/NautilusTrader-unofficial%20community%20adapter-orange.svg)](https://nautilustrader.io)
 
 ---
 
 ## What this is
 
-`mt5-connector` is a **data and execution adapter** that connects [NautilusTrader](https://nautilustrader.io) to any MetaTrader 5 broker. Write your strategy once in Python, then run it as a backtest against historical MT5 data  or flip a switch and run it live.
+`mt5-connector` is a **data and execution adapter** that connects [NautilusTrader](https://nautilustrader.io) to any MetaTrader 5 broker. Write your strategy once in Python, then run it as a backtest against historical MT5 data or flip a switch and run it live.
+
+**Windows (local mode)** — connects directly to a running MT5 terminal via Windows IPC:
 
 ```
 MT5 Terminal (Windows) ←→ mt5-connector ←→ NautilusTrader
@@ -23,58 +25,69 @@ MT5 Terminal (Windows) ←→ mt5-connector ←→ NautilusTrader
                     account state, reconciliation
 ```
 
+**Linux / Docker (remote mode)** — runs MT5 inside a Docker container on any Linux machine or VPS:
+
+```
+Ubuntu VPS / Linux Machine
+├── Docker container
+│   ├── Wine → MT5 Terminal
+│   ├── Flask HTTP server (port 5000)
+│   └── WebSocket tick hub (port 9000)
+│
+└── mt5-connector (remote backend) ←→ NautilusTrader
+```
+
 **What you get:**
 
-- Live tick data polled from MT5, aggregated into any bar type NautilusTrader supports
+- Live tick data — polled on Windows, streamed via WebSocket on Linux/Docker
 - Full order lifecycle: market, limit, stop, stop-limit orders with SL/TP
 - Account state and position reconciliation on startup and continuously
 - Historical bar data download into a NautilusTrader Parquet catalog for backtesting
 - Automatic reconnection with exponential backoff
 - Works with any MT5 broker — Exness, IC Markets, Pepperstone, OANDA, and more
-
-> **Platform note:** The MetaTrader5 Python library is Windows-only. This adapter runs on Windows. Backtesting with downloaded data works on any platform once the data has been collected.
+- **Linux/VPS support** via Dockerized MT5 server (v0.7.0+)
 
 ---
 
 ## Table of contents
 
-- [mt5-connector](#mt5-connector)
-  - [What this is](#what-this-is)
-  - [Table of contents](#table-of-contents)
-  - [Requirements](#requirements)
-  - [Installation](#installation)
-  - [Quick start](#quick-start)
-  - [Configuration](#configuration)
-    - [Symbol naming](#symbol-naming)
-  - [Writing a strategy](#writing-a-strategy)
-  - [Backtesting](#backtesting)
-    - [Step 1 — download historical data](#step-1--download-historical-data)
-    - [Step 2 — run the backtest](#step-2--run-the-backtest)
-  - [Live trading](#live-trading)
-    - [Bar types for live trading](#bar-types-for-live-trading)
-  - [Dockerized server backend](#dockerized-server-backend)
-    - [What it is](#what-it-is)
-    - [Improtant Security Notice](#improtant-security-notice)
-    - [Requirements](#requirements-1)
-      - [Quick start](#quick-start-1)
-    - [Persistence](#persistence)
-  - [Running the full test suite](#running-the-full-test-suite)
-  - [Project structure](#project-structure)
-  - [Broker compatibility](#broker-compatibility)
-  - [Troubleshooting](#troubleshooting)
-  - [Safety notes](#safety-notes)
-  - [Changelog](#changelog)
-    - [0.1.0 (2026-06-12)](#010-2026-06-12)
-  - [License](#license)
+- [Requirements](#requirements)
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+  - [Symbol naming](#symbol-naming)
+- [Writing a strategy](#writing-a-strategy)
+- [Backtesting](#backtesting)
+- [Live trading](#live-trading)
+- [Linux / Docker remote backend](#linux--docker-remote-backend)
+  - [What it is](#what-it-is)
+  - [Security notice](#security-notice)
+  - [Requirements](#requirements-1)
+  - [Quick start](#quick-start-1)
+  - [Persistence](#persistence)
+- [Running the full test suite](#running-the-full-test-suite)
+- [Project structure](#project-structure)
+- [Broker compatibility](#broker-compatibility)
+- [Troubleshooting](#troubleshooting)
+- [Safety notes](#safety-notes)
+- [Changelog](#changelog)
+- [License](#license)
 
 ---
 
 ## Requirements
 
-- Windows 10 or 11 (required by MetaTrader 5)
+**Windows (local mode):**
+- Windows 10 or 11
 - Python 3.10, 3.11, or 3.12
 - MetaTrader 5 terminal installed and open, logged in to your broker account
 - An MT5 broker account (demo accounts work perfectly for development)
+
+**Linux / Docker (remote mode):**
+- Ubuntu 20.04+ or any Linux distribution with Docker
+- Python 3.10, 3.11, or 3.12
+- Docker and Docker Compose
+- An MT5 broker account
 
 ---
 
@@ -87,7 +100,7 @@ pip install mt5-connector
 Or install from source for development:
 
 ```bash
-git clone https://github.com/aulekator/mt5-connect
+git clone https://github.com/aulekator/mt5-connector
 cd mt5-connector
 pip install -e ".[dev]"
 ```
@@ -170,6 +183,11 @@ config = MT5Config(
 
     # Connection timeout
     timeout_s = 10.0,
+
+    # Linux/Docker remote backend (v0.7.0+)
+    backend    = "remote",                    # "local" (Windows) or "remote" (Linux/Docker)
+    server_url = "http://localhost:5000",     # mt5server Flask API
+    ws_url     = "ws://localhost:9000",       # mt5server WebSocket tick hub
 )
 ```
 
@@ -294,8 +312,6 @@ class SmaCrossStrategy(Strategy):
         self._close_position()
 ```
 
-The strategy above is identical whether you run it in a backtest or live — the only difference is which engine you wire it into.
-
 ---
 
 ## Backtesting
@@ -308,9 +324,7 @@ Backtesting requires two steps: download historical bar data from MT5, then run 
 python examples/download_historical_data.py
 ```
 
-This connects to MT5, downloads H1 bars for the configured symbol, and writes them into a NautilusTrader Parquet catalog at `./catalog`.
-
-You can customise the download by editing the script, or call the downloader directly:
+Or call the downloader directly:
 
 ```python
 from mt5connect.config import MT5Config
@@ -327,21 +341,18 @@ config = MT5Config(
 
 conn     = MT5Connection(config)
 conn.connect()
-
 provider = MT5InstrumentProvider(conn)
 catalog  = ParquetDataCatalog("./catalog")
 
-# Write the instrument definition first (required by the backtest engine)
 instrument = provider.load_symbol("EURUSDm")
 catalog.write_data([instrument])
 
-# Download bars
 downloader = MT5DataDownloader(conn, provider, catalog)
 result = downloader.download_bars(
     symbol    = "EURUSDm",
     start     = datetime(2024, 1,  1, tzinfo=timezone.utc),
     end       = datetime(2024, 12, 31, tzinfo=timezone.utc),
-    timeframe = 16385,  # MT5 timeframe constant: 16385 = H1
+    timeframe = 16385,  # H1
 )
 print(result)
 conn.disconnect()
@@ -351,317 +362,126 @@ conn.disconnect()
 
 | Timeframe | Constant |
 |-----------|----------|
-| M1  | 1 |
-| M5  | 5 |
-| M15 | 15 |
-| M30 | 30 |
+| M1  | 1     |
+| M5  | 5     |
+| M15 | 15    |
+| M30 | 30    |
 | H1  | 16385 |
 | H4  | 16388 |
 | D1  | 16408 |
 | W1  | 32769 |
 
-### Step 2 — run the backtest
-
-```bash
-python examples/backtest_eurusd.py
-```
-
-Or wire it up yourself:
-
-```python
-from decimal import Decimal
-from datetime import datetime, timezone
-from nautilus_trader.backtest.engine import BacktestEngine
-from nautilus_trader.backtest.models import FillModel
-from nautilus_trader.config import BacktestEngineConfig, LoggingConfig
-from nautilus_trader.model.currencies import USD
-from nautilus_trader.model.enums import AccountType, OmsType
-from nautilus_trader.model.identifiers import Venue, TraderId
-from nautilus_trader.model.objects import Money
-from nautilus_trader.persistence.catalog import ParquetDataCatalog
-
-SYMBOL   = "EURUSDm"
-VENUE    = "MT5"
-CATALOG  = "./catalog"
-
-catalog     = ParquetDataCatalog(CATALOG)
-instruments = catalog.instruments()
-instrument  = next(i for i in instruments if i.id.symbol.value == SYMBOL)
-
-# Load bars from catalog
-bars = catalog.bars([f"{SYMBOL}.{VENUE}"])
-
-engine = BacktestEngine(
-    config=BacktestEngineConfig(
-        trader_id=TraderId("BACKTESTER-001"),
-        logging=LoggingConfig(log_level="WARNING"),
-    )
-)
-
-engine.add_venue(
-    venue             = Venue(VENUE),
-    oms_type          = OmsType.NETTING,
-    account_type      = AccountType.MARGIN,
-    base_currency     = USD,
-    starting_balances = [Money(10_000.0, USD)],
-    fill_model        = FillModel(
-        prob_fill_on_limit=0.95,
-        prob_slippage=0.10,
-        random_seed=42,
-    ),
-)
-engine.add_instrument(instrument)
-engine.add_data(bars)
-
-strategy = SmaCrossStrategy(
-    config=SmaCrossConfig(
-        instrument_id = f"{SYMBOL}.{VENUE}",
-        bar_type      = f"{SYMBOL}.{VENUE}-1-HOUR-LAST-INTERNAL",
-        fast_period   = 10,
-        slow_period   = 30,
-        trade_size    = Decimal("0.10"),
-    )
-)
-engine.add_strategy(strategy)
-engine.run(
-    start = datetime(2024, 1,  1, tzinfo=timezone.utc),
-    end   = datetime(2024, 12, 31, tzinfo=timezone.utc),
-)
-
-# Results
-account = engine.trader.generate_account_report(Venue(VENUE))
-fills   = engine.trader.generate_order_fills_report()
-print(account)
-print(f"Total fills: {len(fills)}")
-engine.dispose()
-```
-
 ---
 
 ## Live trading
 
-Live trading uses NautilusTrader's `TradingNode` with the MT5 data and execution clients.
+See `examples/live_simple_strategy.py` for a complete runnable example. The key difference from backtesting is wiring the adapter into a `TradingNode` instead of a `BacktestEngine`.
 
 ```python
-import os, signal, sys
-from decimal import Decimal
-from pathlib import Path
-from dotenv import load_dotenv
-from nautilus_trader.live.node import TradingNode
 from mt5connect.config import MT5Config
-from mt5connect.factories import (
-    build_mt5_node_config,
-    MT5LiveDataClientFactory,
-    MT5LiveExecClientFactory,
+from mt5connect.factories import build_mt5_node_config
+from nautilus_trader.live.node import TradingNode
+
+config = MT5Config(
+    account=12345678,
+    password="your_password",
+    server="Exness-MT5Trial9",
+    symbols=["EURUSDm", "XAUUSDm"],
 )
 
-load_dotenv(Path(__file__).parent / ".env")
-
-# 1. Configure MT5
-mt5_config = MT5Config(
-    account  = int(os.environ["MT5_ACCOUNT"]),
-    password = os.environ["MT5_PASSWORD"],
-    server   = os.environ["MT5_SERVER"],
-    symbols  = os.environ["MT5_SYMBOLS"].split(","),
-)
-
-# 2. Configure strategy
-symbol        = mt5_config.symbols[0]
-instrument_id = f"{symbol}.MT5"
-bar_type      = f"{instrument_id}-1-MINUTE-LAST-INTERNAL"
-
-strategy_config = SmaCrossConfig(
-    instrument_id = instrument_id,
-    bar_type      = bar_type,
-    fast_period   = 10,
-    slow_period   = 30,
-    trade_size    = Decimal("0.01"),
-)
-
-# 3. Build and run the node
-node_config = build_mt5_node_config(mt5_config=mt5_config)
-node        = TradingNode(config=node_config)
-
-# 4. Register factories (must be before node.build())
-node.add_data_client_factory("MT5", MT5LiveDataClientFactory)
-node.add_exec_client_factory("MT5", MT5LiveExecClientFactory)
-
-# 5. Add strategy
-node.trader.add_strategy(SmaCrossStrategy(config=strategy_config))
-
-# 6. Graceful shutdown on Ctrl+C
-def _shutdown(sig, frame):
-    node.stop()
-    sys.exit(0)
-
-signal.signal(signal.SIGINT,  _shutdown)
-signal.signal(signal.SIGTERM, _shutdown)
-
-# 7. Start
-node.build()  # connects to MT5, loads instruments
-node.run()    # starts polling loops and strategy
-```
-
-The node lifecycle in order — **sequence matters:**
-
-```
-TradingNode(config)                    # 1. init kernel and engines
-node.add_data_client_factory(...)      # 2. register MT5 data factory
-node.add_exec_client_factory(...)      # 2. register MT5 exec factory
-node.trader.add_strategy(instance)     # 3. register strategy instance
-node.build()                           # 4. connect to MT5, load instruments
-node.run()                             # 5. start tick polling and strategy
-```
-
-### Bar types for live trading
-
-NautilusTrader aggregates ticks into bars internally. The bar type string format is:
-
-```
-{symbol}.{venue}-{step}-{aggregation}-{price_type}-{aggregation_source}
-```
-
-Common examples:
-
-```python
-"EURUSDm.MT5-1-MINUTE-LAST-INTERNAL"    # 1-minute bars
-"EURUSDm.MT5-5-MINUTE-LAST-INTERNAL"    # 5-minute bars
-"EURUSDm.MT5-1-HOUR-LAST-INTERNAL"      # 1-hour bars
-"EURUSDm.MT5-100-TICK-LAST-INTERNAL"    # 100-tick bars
-"EURUSDm.MT5-1000-VOLUME-LAST-INTERNAL" # volume bars
+node = TradingNode(config=build_mt5_node_config(config))
+node.trader.add_strategy(YourStrategy(config=YourStrategyConfig(...)))
+node.run()
 ```
 
 ---
 
-## Dockerized server backend
-
-The adapter can run against a **Dockerized MT5 server** instead of a local
-MetaTrader terminal. The server container runs MT5 under Wine, exposes a
-Flask REST API (`mt5server/app`) plus a WebSocket tick hub, and runs a
-small MQL5 EA that publishes live ticks. The adapter then works on any
-machine — including Linux — by selecting `backend="remote"`.
-
-```
-┌─ your bot (any OS) ────────────────┐      ┌─ MT5 server container ────────┐
-│  mt5-connector (backend="remote")  │      │  Flask REST  :5000             │
-│   └─ WSStreamClient                │──────│  WS tick hub :9000             │
-│      (subscribe/tick messages)     │      │  MT5 terminal (Wine)           │
-└────────────────────────────────────┘      └────────────────────────────────┘
-```
+## Linux / Docker remote backend
 
 ### What it is
 
-- A `backend="remote"` mode on `MT5Config` plus a `server_url` (HTTP) and a
-  derived `ws_url` (WebSocket) — see `mt5connect/config.py`.
-- The Docker image builds MT5 + Wine + the Flask API + the WS hub in one
-  container (`mt5server/Dockerfile`), with the EA provisioned automatically.
-- `set_backend(config)` binds the HTTP/WS client (`mt5connect/remote_mt5.py`,
-  `mt5connect/ws_stream.py`) into the adapter, replacing the local
-  `MetaTrader5` package — no Windows-only dependency needed.
+v0.7.0 adds full Linux support via a Dockerized MT5 server. This lets you run NautilusTrader strategies on a Linux VPS or server without needing a Windows machine.
 
-### Improtant Security Notice
+The `mt5server/` directory contains:
+- A **Dockerfile** that installs MT5 inside Wine on Ubuntu
+- A **Flask HTTP API** (port 5000) that exposes the full MetaTrader5 Python API over HTTP
+- A **WebSocket hub** (port 9000) that streams live ticks from MT5 to your Python adapter in real time
+- An **MQL5 Expert Advisor** (`ticks.mq5`) that runs inside MT5 and pushes ticks to the WebSocket hub
+- **Automated setup scripts** — MT5 installs and configures itself from environment variables, no manual GUI interaction needed
 
-There is no authentication in the dockerized backend. It is intended to be used on the
-same machine only for now. Never expose ports to an insecure network. 
+### Security notice
+
+> ⚠️ The server currently has **no authentication**. It must only be used locally (loopback) and must **never** be exposed to a public network. Exposing port 5000 or 9000 publicly gives anyone full control of your MT5 account.
+
+Account credentials live only in your local `.env` file. They are passed to the container via environment variables and never baked into the Docker image.
 
 ### Requirements
 
-- Docker on the host.
+- Docker and Docker Compose
+- Linux (Ubuntu 20.04+ recommended) or macOS with Docker Desktop
+- An MT5 broker account
 
-#### Quick start
+### Quick start
 
-***1 . Build and start Container***
-
-With docker compose: 
-
-```bash
-# 0. create an environment file 
-cp .env.example .env   # set MT5_ACCOUNT / MT5_PASSWORD / MT5_SERVER
-
-# 1. Build + start the server (context is the repo root, so mt5ticks/ is copied)
-source .env
-# environment variables need to be exported in order to be picked up by docker compose
-export MT5_ACCOUNT
-export MT5_PASSWORD
-export MT5_SERVER
-export MT5_SYMBOLS
-cd mt5server && docker compose up --build -d
-``` 
-
-Without docker compose
-
-Without docker-compose, build/run directly:
+**1. Copy the environment file and fill in your credentials:**
 
 ```bash
-cd mt5server 
-docker build -t mt5-server .
-source ../.env
-docker run -d --name mt5-server \
-  -p 127.0.0.1:5000:5000 -p 127.0.0.1:9000:9000 -p 127.0.0.1:3001:3001 \
-  -e MT5_SYMBOLS="${MT5_SYMBOLS}" \
-  -e MT5_SERVER="${MT5_SERVER}" \
-  -e MT5_PASSWORD="${MT5_PASSWORD}" \
-  -e MT5_ACCOUNT="${MT5_ACCOUNT}" \
-  mt5-server
+cd mt5server/
+cp ../.env.example .env
+# Edit .env with your MT5 account, password, server, and symbols
 ```
 
-***2. Wait until container is up***
+**2. Start the server:**
 
 ```bash
-
-# 2. Metatrader 5 ist installed and started in a docker container. Give it 1-2 minutes to start
-# if you want to track the installation progress run:
-docker exec -it  mt5server-mt5server-1 tail -f /var/log/mt5_setup.log
-
-# if you need to see the metatrader ui open https://localhost:3001 in a browser
+docker compose up -d
+# MT5 installs automatically inside the container — allow 1-2 minutes
+# Track progress: docker exec -it mt5server-mt5server-1 tail -f /var/log/mt5_setup.log
+# View MT5 UI (optional): open https://localhost:3001 in a browser
 ```
 
-***3. Run remote backend example***
+**3. Run the remote backend example:**
+
 ```bash
-# 3. in a new terminal
 source .env
 source .venv/bin/activate
 python examples/live_remote.py
 ```
-If everythng works correctly you shoud see ticks streming in after a few seconds like this:
+
+If everything is working you should see ticks streaming within a few seconds:
 
 ```
-2026-08-19T12:20:07.454036271Z [INFO] TRADER-001.Portfolio: Updated AccountState(account_id=MT5-917132, account_type=MARGIN, base_currency=None, is_reported=True, balances=[AccountBalance(total=9_999.93 USD, locked=0.00 USD, free=9_999.93 USD)], margins=[], event_id=c24fbca4-15bb-4105-9eaa-4ebaa3bfb873)
-2026-08-19T12:20:07.613214977Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.34 ask=4368.46 @ 1787152807592000000
-2026-08-19T12:20:07.633962622Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.37 ask=4368.49 @ 1787152807612000000
-2026-08-19T12:20:07.685732285Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.37 ask=4368.47 @ 1787152807664000000
-2026-08-19T12:20:07.697749223Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.25 ask=4368.37 @ 1787152807675000000
-2026-08-19T12:20:07.710776389Z [INFO] TRADER-001.TickPrintStrategy: EURUSDp.MT5 bid=1.16074 ask=1.16075 @ 1787152807684000000
-2026-08-19T12:20:07.725422727Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.34 ask=4368.46 @ 1787152807704000000
-2026-08-19T12:20:07.732231519Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.34 ask=4368.43 @ 1787152807713000000
-2026-08-19T12:20:07.746709404Z [INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.31 ask=4368.43 @ 1787152807723000000
-2026-08-19T12:20:07.767988612Z [INFO] TRADER-001.TickPrintStrategy: EURUSDp.MT5 bid=1.16075 ask=1.16076 @ 1787152807745000000
-
+[INFO] TRADER-001.TickPrintStrategy: XAUUSDp.MT5 bid=4368.34 ask=4368.46 @ 1787152807592000000
+[INFO] TRADER-001.TickPrintStrategy: EURUSDp.MT5 bid=1.16074 ask=1.16075 @ 1787152807684000000
 ```
 
+**4. Connect your strategy using remote backend config:**
 
-**Tick streaming setup**
+```python
+from mt5connect.config import MT5Config
 
-Ticks streamking is set up automatically for every symbol in the environment
-variable  `MT5_SYMBOLS`.
+config = MT5Config(
+    account    = 12345678,
+    password   = "your_password",
+    server     = "Exness-MT5Trial9",
+    symbols    = ["EURUSDm", "XAUUSDm"],
+    backend    = "remote",
+    server_url = "http://localhost:5000",
+    ws_url     = "ws://localhost:9000",
+)
+```
 
-**Security note**
-
-For now the server *does not provide any authentication and authorization*. That means it should be only used  locally
-and never be exposed over an insecure network, as this will *expose the api and your account* to every one who has access
-to the network. On public machines this is the whole internet. 
-
-Account credentials live only in your local gitignored `.env`. They are only passed to the container via environment 
-variables and used during setup. They are also forwarded to the server at runtime via `POST /login` .
-They  and are never baked into the Docker image. The server's `config/` directory (Wine prefix) is a mounted
-volume owned by the container.
+Tick streaming is configured automatically for every symbol in `MT5_SYMBOLS`.
 
 ### Persistence
 
-The dockerized metatrader instance is configured at startup automatically and not intended to be used via the regular matatrader GUI.
-Therefor it has no volumes for persisting configuration configured. If you need to persist data between container instances, you need
-to mount a volume to the containers `/config` path. For example by additonally passing `-v $PWD/config:/config` to the docker command
-line, or change the `docker-compose.yaml` file accordingly. 
+The containerized MT5 instance configures itself at startup and is not intended to be used via the regular MT5 GUI. It has no volumes for persisting configuration by default. To persist data between container restarts, mount a volume to `/config`:
+
+```bash
+docker run -v $PWD/config:/config ...
+```
+
+Or add the volume to `docker-compose.yml`.
 
 ---
 
@@ -671,15 +491,23 @@ line, or change the `docker-compose.yaml` file accordingly.
 pytest tests/ -v
 ```
 
-All tests mock the MT5 terminal — no live connection required to run tests.
+All tests mock the MT5 terminal — no live connection required.
 
 ```
-tests/test_connection.py   — MT5Connection lifecycle, reconnect logic
+640 passed in ~18s
+
+tests/test_backend.py      — backend switching (local vs remote)
+tests/test_config.py       — MT5Config validation
+tests/test_connection.py   — MT5Connection lifecycle and reconnect logic
 tests/test_data.py         — MT5DataClient tick polling and bar publishing
+tests/test_data_ws.py      — WebSocket tick streaming (remote mode)
+tests/test_downloader.py   — historical bar download
 tests/test_execution.py    — order submission, fills, reconciliation
 tests/test_factories.py    — factory wiring and node config
 tests/test_parsing.py      — symbol info → NautilusTrader instrument conversion
 tests/test_providers.py    — MT5InstrumentProvider loading
+tests/test_remote_mt5.py   — HTTP shim for remote backend
+tests/test_ws_stream.py    — WebSocket client auto-reconnect
 ```
 
 ---
@@ -689,6 +517,7 @@ tests/test_providers.py    — MT5InstrumentProvider loading
 ```
 mt5-connector/
 ├── mt5connect/
+│   ├── backend.py       # backend switching — local (Windows IPC) vs remote (HTTP)
 │   ├── config.py        # MT5Config — all user-facing configuration
 │   ├── connection.py    # MT5Connection — terminal IPC lifecycle
 │   ├── constants.py     # venue, magic number, symbol sets, normalize_symbol()
@@ -698,13 +527,24 @@ mt5-connector/
 │   ├── execution.py     # MT5LiveExecutionClient — order submission and fills
 │   ├── factories.py     # LiveDataClientFactory + LiveExecClientFactory wiring
 │   ├── parsing.py       # symbol_info → NautilusTrader Instrument conversion
-│   └── providers.py     # MT5InstrumentProvider
+│   ├── providers.py     # MT5InstrumentProvider
+│   ├── remote_mt5.py    # HTTP shim mirroring MetaTrader5 Python API (remote mode)
+│   └── ws_stream.py     # WebSocket tick client (remote mode)
+├── mt5server/           # Dockerized MT5 server for Linux/VPS (v0.7.0+)
+│   ├── Dockerfile       # Ubuntu + Wine + MT5 + Python + Flask
+│   ├── docker-compose.yml
+│   ├── app/             # Flask HTTP API + WebSocket hub
+│   │   ├── app.py
+│   │   ├── routes/      # /health, /login, /account, /mt5/*
+│   │   └── ws_server.py # tick relay hub
+│   ├── mt5ticks/        # MQL5 EA that streams ticks to the WebSocket hub
+│   └── scripts/         # automated MT5 installation scripts
 ├── tests/               # full test suite (no live MT5 required)
 ├── examples/
-│   ├── live_simple_strategy.py       # full live trading example
-│   ├── backtest_eurusd.py            # SMA crossover backtest
-│   ├── download_historical_data.py   # download bars from MT5
-│   └── test_place_order.py           # verify execution path end-to-end
+│   ├── live_simple_strategy.py     # Windows local mode
+│   ├── live_remote.py              # Linux/Docker remote mode
+│   ├── backtest_eurusd.py          # SMA crossover backtest
+│   └── download_historical_data.py # download bars from MT5
 ├── .env.example         # credential template — copy to .env and fill in
 └── pyproject.toml
 ```
@@ -731,25 +571,27 @@ Find your exact server name in MT5 → File → Open Account → search your bro
 
 **`mt5.initialize() failed — error -6: Terminal: Authorization failed`**
 
-The MT5 terminal is not open, or is not logged in. Open MetaTrader 5, log in to your account, wait for the green connection indicator in the bottom-right corner, then run the script again.
+The MT5 terminal is not open or is not logged in. Open MetaTrader 5, log in to your account, wait for the green connection indicator in the bottom-right corner, then run the script again.
 
 **`mt5.login() failed — error -6: Terminal: Authorization failed`**
 
-Wrong account number, password, or server name. Double-check all three against your broker's welcome email or the MT5 terminal itself (the account number is shown in the top-left of the terminal).
+Wrong account number, password, or server name. Double-check all three against your broker's welcome email or the MT5 terminal itself (account number is shown in the top-left).
 
 **`order_send failed — retcode=10027 comment=AutoTrading disabled by client`**
 
-AutoTrading is disabled in the MT5 terminal. Click the **AutoTrading** button in the toolbar — it should turn green. This must be enabled for any automated order to be sent.
+AutoTrading is disabled in the MT5 terminal. Click the **AutoTrading** button in the toolbar — it should turn green.
 
 **`Factory was not of type LiveExecClientFactory`**
 
-You are using an old version of `factories.py` where `MT5LiveExecClientFactory` did not inherit from `LiveExecClientFactory`. Update to the latest version.
+You are using an old version of `factories.py`. Update to the latest version.
 
 **Strategy not placing trades after 30+ minutes**
 
-Check that the bar type string in your strategy config exactly matches the bar type you subscribed to in `on_start`. A mismatch means `on_bar` is never called. Also verify AutoTrading is enabled in the MT5 terminal.
+Check that the bar type string in your strategy config exactly matches the bar type you subscribed to in `on_start`. Also verify AutoTrading is enabled in the MT5 terminal.
 
-Note: `mt5-connector` only installs successfully on Windows. It cannot be installed on macOS or Linux.
+**Docker container not starting / MT5 not initializing**
+
+Check the setup log: `docker exec -it mt5server-mt5server-1 tail -f /var/log/mt5_setup.log`. The first startup takes 1-2 minutes for MT5 to install and log in.
 
 ---
 
@@ -760,29 +602,42 @@ Note: `mt5-connector` only installs successfully on Windows. It cannot be instal
 - Change `magic_number` if you run multiple bots simultaneously to avoid one bot managing the other's positions.
 - The adapter uses netting mode (one position per symbol) matching how MT5 accounts work by default. Hedging accounts are not currently supported.
 - Past backtest performance does not guarantee live performance. Spreads, slippage, and execution latency differ between backtest and live environments.
+- **Remote mode security:** Never expose the mt5server ports (5000, 9000) to a public network. Use SSH tunnels or a private network if accessing remotely.
 
 ---
 
 ## Changelog
 
+### 0.7.1 (2026-09-13)
+
+- Fix `pyproject.toml` metadata version incompatibility with Python 3.14
+- Add `websockets>=12.0` as explicit dependency
+- Add Linux OS classifier
+
+### 0.7.0 (2026-09-13)
+
+**Linux/Docker support via remote backend** — contributed by [@cornelius-keller](https://github.com/cornelius-keller)
+
+- Add `mt5server/` — Dockerized MT5 server running on Ubuntu via Wine
+- Add `mt5connect/remote_mt5.py` — HTTP shim mirroring the MetaTrader5 Python API, allowing Linux Python code to talk to a remote MT5 terminal
+- Add `mt5connect/ws_stream.py` — WebSocket tick streaming client with auto-reconnect
+- Add `mt5connect/backend.py` — clean switching between `local` (Windows IPC) and `remote` (HTTP) backends via `MT5Config(backend="remote", server_url=...)`
+- Add `examples/live_remote.py` — complete remote backend example
+- Fix `_disconnect()` — handle `asyncio.CancelledError` correctly when cancelling the poll task
+- Fix `_poll_once()` — per-symbol exception isolation so one failing symbol does not stop polling others
+- Fix `_subscribe_quote_ticks()` — track subscriptions before connection is established
+- Fix `subscribed_quote_ticks` — expose as `@property` not a plain method
+- Fix `get_instrument()` in `providers.py` — case-insensitive symbol lookup
+- 640 tests passing
+
 ### 0.1.0 (2026-06-12)
 
-**Bug fix:** `MT5LiveExecutionClient` no longer replays historical deals from the current day's MT5 history as fills when the node starts up. Previously, restarting the node mid-session caused NautilusTrader to emit `WARN/ERROR` log entries like:
-
-```
-Order with ClientOrderId('MT5-xxxx') not found in the cache to apply OrderFilled(...)
-Cannot apply event to any order: ... not found in cache
-```
-
-because fills from prior sessions were re-emitted into an execution engine that had no record of those orders.
-
-**Root cause:** `_processed_deal_keys` was empty on startup, so the first execution poll replayed every deal since UTC midnight.
-
-**Fix:** `_connect()` now calls `_seed_processed_deals()` before starting the poll loop. This pre-populates `_processed_deal_keys` with all existing deals in the silence window (UTC midnight → now) without emitting them as fills. A secondary guard in `_emit_fill()` also silently skips any deal whose order is not registered with NT in the current session, rather than synthesising a fake `ClientOrderId` and pushing it through `generate_order_filled`.
+- Initial release — Windows local mode with full NautilusTrader integration
+- Live tick polling, order execution, position reconciliation
+- Historical bar download to Parquet catalog for backtesting
+- Fix: execution client no longer replays historical deals as fills on node restart
 
 ---
-
-
 
 Pull requests are welcome. Run the test suite before submitting:
 
