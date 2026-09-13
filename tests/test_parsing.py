@@ -98,11 +98,12 @@ def make_symbol_info(
 
 def make_tick(bid=1.08500, ask=1.08502, last=1.08501, volume=1, time_s=1700000000):
     tick = MagicMock()
-    tick.bid    = bid
-    tick.ask    = ask
-    tick.last   = last
-    tick.volume = volume
-    tick.time   = time_s
+    tick.bid      = bid
+    tick.ask      = ask
+    tick.last     = last
+    tick.volume   = volume
+    tick.time     = time_s
+    tick.time_msc = time_s * 1000  # milliseconds
     return tick
 
 
@@ -709,7 +710,8 @@ class TestParseQuoteTick:
         inst = parse_symbol_info(info)
         tick = make_tick(time_s=1700000000)
         result = parse_quote_tick(tick, inst)
-        expected_ns = 1700000000 * 1_000_000_000
+        # time_msc = time_s * 1000 = 1700000000000 ms -> ns = * 1_000_000
+        expected_ns = 1700000000 * 1000 * 1_000_000
         assert result.ts_event == expected_ns
 
     def test_bid_size_nominal(self, eurusd):

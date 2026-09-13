@@ -114,7 +114,7 @@ async def test_ws_on_message_handles_known_symbol():
     client._handle_data.assert_called_once()
     quote = client._handle_data.call_args[0][0]
     assert quote.bid_price.as_double() == 1.08
-    assert quote.ts_event == 1704067200 * 1_000_000_000  # epoch from time_msec
+    assert quote.ts_event == 1704067200123 * 1_000_000  # time_msec (ms) -> ns, preserving sub-second precision
 
 
 @pytest.mark.asyncio

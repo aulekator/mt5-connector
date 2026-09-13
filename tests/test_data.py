@@ -634,7 +634,7 @@ class TestRequestQuoteTicks:
 
         client._handle_quote_ticks.assert_called_once()
         args = client._handle_quote_ticks.call_args[0]
-        assert len(args[0]) == 10
+        assert len(args[1]) == 10
 
     @pytest.mark.asyncio
     async def test_delivers_empty_list_when_no_data(self, client):
@@ -651,7 +651,7 @@ class TestRequestQuoteTicks:
 
         client._handle_quote_ticks.assert_called_once()
         args = client._handle_quote_ticks.call_args[0]
-        assert args[0] == []
+        assert args[1] == []
 
     @pytest.mark.asyncio
     async def test_handles_none_response_gracefully(self, client):
@@ -709,7 +709,7 @@ class TestRequestBars:
 
         client._handle_bars.assert_called_once()
         args = client._handle_bars.call_args[0]
-        assert len(args[0]) == 5
+        assert len(args[1]) == 5
 
     @pytest.mark.asyncio
     async def test_delivers_empty_list_when_no_bars(self, client):
@@ -726,7 +726,7 @@ class TestRequestBars:
 
         client._handle_bars.assert_called_once()
         args = client._handle_bars.call_args[0]
-        assert args[0] == []
+        assert args[1] == []
 
     @pytest.mark.asyncio
     async def test_skips_when_instrument_not_found(self, client):
@@ -797,7 +797,7 @@ class TestProperties:
         cmd = MagicMock()
         cmd.instrument_id.symbol.value = "EURUSDm"
         await client._subscribe_quote_ticks(cmd)
-        assert "EURUSDm" in client.subscribed_quote_ticks
+        assert any(i.symbol.value == "EURUSDm" for i in client.subscribed_quote_ticks)
 
     def test_is_polling_false_initially(self, client):
         assert client.is_polling is False

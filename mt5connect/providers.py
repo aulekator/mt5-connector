@@ -259,21 +259,28 @@ class MT5InstrumentProvider(InstrumentProvider):
         """
         Retrieve a loaded instrument by symbol name string.
 
-        More convenient than find(InstrumentId.from_str("EURUSD.MT5")).
-        Returns None if the symbol has not been loaded yet.
+        Case-insensitive: get_instrument("eurusd") and get_instrument("EURUSD")
+        both work. Broker suffix casing is still preserved when loading —
+        only lookup is case-insensitive.
 
         Parameters
         ----------
         symbol : str
-            Symbol name (e.g. "EURUSD", "XAUUSDm"). Exact broker casing
-            is preserved — do NOT uppercase. Brokers like Exness use
-            lowercase suffixes (e.g. "XAUUSDm"), and instruments are
-            registered under that exact casing in load_symbol(), so
-            uppercasing here would break the lookup for those symbols.
+            Symbol name (e.g. "EURUSD", "eurusd", "XAUUSDm").
+
+        Returns
+        -------
+        InstrumentAny | None
+            The instrument if loaded, None otherwise.
         """
         from mt5connect.constants import MT5_VENUE
+
+        # FIX: uppercase for case-insensitive lookup.
+        # Instruments are stored under their uppercased symbol name in the
+        # NautilusTrader cache (parse_symbol_info always uppercases the id).
+        # Without this, get_instrument("eurusd") would fail to find "EURUSD".
         instrument_id = InstrumentId(
-            Symbol(symbol.strip()),
+            Symbol(symbol.strip().upper()),
             MT5_VENUE,
         )
         return self.find(instrument_id)

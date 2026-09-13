@@ -44,6 +44,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
 class MT5DataClient(LiveMarketDataClient):
     """
     Streams live market data from MT5 into NautilusTrader via polling.
@@ -79,6 +80,25 @@ class MT5DataClient(LiveMarketDataClient):
         self._last_tick_time: dict[str, int] = {}
         self._is_connected = False
         self._pending_subscriptions: set[str] = set()
+
+    # ── Aliases for backward-compat with tests written against old attr names ─
+    @property
+    def _subscribed_ticks(self) -> set[str]:
+        """Alias for _subscribed_symbols (backward compat)."""
+        return self._subscribed_symbols
+
+    @_subscribed_ticks.setter
+    def _subscribed_ticks(self, value: set[str]) -> None:
+        self._subscribed_symbols = value
+
+    @property
+    def _subscribed_bars(self) -> set[str]:
+        """Alias for _subscribed_bar_types (backward compat)."""
+        return self._subscribed_bar_types
+
+    @_subscribed_bars.setter
+    def _subscribed_bars(self, value: set[str]) -> None:
+        self._subscribed_bar_types = value
 
     async def _connect(self) -> None:
         """Called by NautilusTrader on node startup."""
@@ -150,7 +170,12 @@ class MT5DataClient(LiveMarketDataClient):
             self._ws = None
         if self._poll_task and not self._poll_task.done():
             self._poll_task.cancel()
-            await self._poll_task
+            # FIX: CancelledError is the normal result of cancelling a task —
+            # must be caught here or it propagates up and breaks the test/teardown.
+            try:
+                await self._poll_task
+            except asyncio.CancelledError:
+                pass
             self._poll_task = None
 
         self._subscribed_symbols.clear()
@@ -162,11 +187,15 @@ class MT5DataClient(LiveMarketDataClient):
     async def _subscribe_quote_ticks(self, command: SubscribeQuoteTicks) -> None:
         symbol = command.instrument_id.symbol.value
 
+        # Always track in _subscribed_symbols so callers can check subscriptions
+        # regardless of connection state. Also track in pending so _connect()
+        # can flush them into the poll loop on startup.
+        self._subscribed_symbols.add(symbol)
+
         if not self._is_connected:
             self._pending_subscriptions.add(symbol)
             return
 
-        self._subscribed_symbols.add(symbol)
         self._log.debug(f"MT5DataClient: subscribed ticks → {symbol}")
 
         await self._push_subscribe_state()
@@ -328,24 +357,18 @@ class MT5DataClient(LiveMarketDataClient):
 
         if raw is None or len(raw) == 0:
             self._log.warning(f"MT5DataClient: no ticks for {symbol} {start}→{end}")
-            # _handle_quote_ticks signature: (instrument_id, ticks, correlation_id, start, end, params)
             self._handle_quote_ticks(instrument.id, [], request.id, request.start, request.end, request.params)
             return
 
         ticks = [parse_quote_tick(row, instrument) for row in raw]
-        # _handle_quote_ticks signature: (instrument_id, ticks, correlation_id, start, end, params)
         self._handle_quote_ticks(instrument.id, ticks, request.id, request.start, request.end, request.params)
         self._log.debug(f"MT5DataClient: delivered {len(ticks):,} ticks for {symbol}")
 
-    # ================================================================
-    # FIXED: _request_bars with correct _handle_bars signature (6 args)
-    # ================================================================
     async def _request_bars(self, request: RequestBars) -> None:
         bar_type = request.bar_type
         symbol = bar_type.instrument_id.symbol.value
         timeframe = _bar_spec_to_mt5_timeframe(bar_type)
 
-        # Handle start time
         if request.start is not None:
             if hasattr(request.start, 'timestamp'):
                 start = datetime.fromtimestamp(request.start.timestamp(), tz=timezone.utc)
@@ -354,7 +377,6 @@ class MT5DataClient(LiveMarketDataClient):
         else:
             start = None
 
-        # Handle end time
         if request.end is not None:
             if hasattr(request.end, 'timestamp'):
                 end = datetime.fromtimestamp(request.end.timestamp(), tz=timezone.utc)
@@ -374,12 +396,10 @@ class MT5DataClient(LiveMarketDataClient):
 
         if raw is None or len(raw) == 0:
             self._log.warning(f"MT5DataClient: no bars for {symbol} TF={timeframe}")
-            # _handle_bars signature: (bar_type, bars, correlation_id, start, end, params)
             self._handle_bars(bar_type, [], request.id, request.start, request.end, request.params)
             return
 
         bars = [parse_bar(row, instrument, timeframe) for row in raw]
-        # _handle_bars signature: (bar_type, bars, correlation_id, start, end, params)
         self._handle_bars(bar_type, bars, request.id, request.start, request.end, request.params)
         self._log.debug(f"MT5DataClient: delivered {len(bars):,} bars for {symbol}")
 
@@ -396,7 +416,13 @@ class MT5DataClient(LiveMarketDataClient):
         self._log.info("MT5DataClient: poll loop started")
 
         while True:
-            await self._poll_once()
+            try:
+                await self._poll_once()
+            except MT5ConnectionError:
+                ok = await self._conn.reconnect_async()
+                if not ok:
+                    self._log.error("MT5DataClient: reconnect failed — stopping poll loop")
+                    return
             await asyncio.sleep(self._config.poll_interval_s)
 
     async def _poll_once(self) -> None:
@@ -408,38 +434,41 @@ class MT5DataClient(LiveMarketDataClient):
         self._conn.ensure_connected()
 
         for symbol in list(self._subscribed_symbols):
-
-            if not mt5.symbol_select(symbol, True):
-                await asyncio.sleep(0.1)
+            try:
                 if not mt5.symbol_select(symbol, True):
+                    await asyncio.sleep(0.1)
+                    if not mt5.symbol_select(symbol, True):
+                        continue
+
+                raw_tick = None
+
+                for attempt in range(3):
+                    raw_tick = mt5.symbol_info_tick(symbol)
+                    if raw_tick is not None:
+                        break
+                    await asyncio.sleep(0.05)
+
+                if raw_tick is None:
                     continue
 
-            raw_tick = None
+                tick_time_ms = raw_tick.time_msc
+                if self._last_tick_time.get(symbol) == tick_time_ms:
+                    continue
+                self._last_tick_time[symbol] = tick_time_ms
 
-            for attempt in range(3):
-                raw_tick = mt5.symbol_info_tick(symbol)
-                if raw_tick is not None:
-                    break
-                await asyncio.sleep(0.05)
+                instrument = self._provider.get_instrument(symbol)
+                if instrument is None:
+                    continue
 
-            if raw_tick is None:
-                continue
+                tick = parse_quote_tick(raw_tick, instrument)
+                self._handle_data(tick)
 
-            tick_time_ms = raw_tick.time_msc
-            if self._last_tick_time.get(symbol) == tick_time_ms:
-                continue
-            self._last_tick_time[symbol] = tick_time_ms
+            except Exception as exc:
+                logger.warning(f"MT5DataClient: error polling {symbol}: {exc}")
 
-            instrument = self._provider.get_instrument(symbol)
-            if instrument is None:
-                continue
-
-            tick = parse_quote_tick(raw_tick, instrument)
-
-            self._handle_data(tick)
-
+    @property
     def subscribed_quote_ticks(self) -> list[InstrumentId]:
-        """Currently subscribed symbols."""
+        """Currently subscribed symbols as InstrumentId list."""
         return [InstrumentId(Symbol(s), MT5_VENUE) for s in sorted(self._subscribed_symbols)]
 
     @property
@@ -447,10 +476,12 @@ class MT5DataClient(LiveMarketDataClient):
         """True if the poll loop task is running."""
         return self._poll_task is not None and not self._poll_task.done()
 
+
 def _nanos_to_datetime(nanos: int | None) -> datetime | None:
     if nanos is None:
         return None
     return datetime.fromtimestamp(nanos / 1_000_000_000, tz=timezone.utc)
+
 
 def _bar_spec_to_mt5_timeframe(bar_type) -> int:
     from nautilus_trader.model.enums import BarAggregation
@@ -477,5 +508,3 @@ def _bar_spec_to_mt5_timeframe(bar_type) -> int:
         return 49153
 
     return mt5.TIMEFRAME_H1
-
-#fix
